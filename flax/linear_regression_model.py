@@ -1,7 +1,8 @@
 from typing import Any, Callable, Sequence
 
 import jax
-from jax import lax, random, numpy as jnp
+from jax import numpy as jnp
+from jax import lax, random
 from flax.core import freeze, unfreeze
 from flax import linen as nn
 
@@ -11,7 +12,7 @@ model = nn.Dense(features=5)
 
 key1, key2 = random.split(random.PRNGKey(0))
 x = random.normal(key1, (10,))  # Dummy input data
-params = model.init(key2, x ) # Initialization call
+params = model.init(key2, x)  # Initialization call
 
 model.apply(params, x)
 
@@ -65,4 +66,3 @@ for i in range(101):
     params = optax.apply_updates(params, updates)
     if i % 10 == 0:
         print(f'Loss step {i}: ', loss_val)
-
