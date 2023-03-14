@@ -4,12 +4,11 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
+import distrax
 
 
 class ActorCritic(nn.Module):
-    actor_layers: Sequence[int]
-    critic_layers: Sequence[int]
-    num_outputs: int
+    action_space: int
 
     # runs after __postinit__:
     def setup(self):
@@ -30,7 +29,7 @@ class ActorCritic(nn.Module):
         )(x)
         x = nn.relu(x)
         logits = nn.Dense(
-            features=self.num_outputs,
+            features=self.action_space,
             name='logits',
             dtype=dtype,
         )(x)
@@ -56,3 +55,23 @@ class ActorCritic(nn.Module):
             dtype=dtype,
         )(x)
         return value
+
+    def __call__(self, x):
+        logits = self.actor(x)
+        policy_probabilities = nn.softmax(logits)
+        value = self.critic(x)
+        return policy_probabilities, value
+
+    def policy_probabilities(self, x):
+        logits = self.actor(x)
+        policy_probabilities = nn.softmax(logits)
+        return policy_probabilities
+
+    def value(self, x):
+        return self.critic(x)
+
+    def policy_action(self, x):
+        logits = self.actor(x)
+        policy_probabilities = nn.softmax(logits)
+        distribution = distrax.Categorical(probs=policy_probabilities)
+        return distribution.sample(seed=self.seed)
