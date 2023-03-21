@@ -33,5 +33,4 @@ class ActorNetwork(nn.Module):
 
     def __call__(self, x):
         logits = self.actor(x)
-        policy_probabilities = nn.softmax(logits)
-        return policy_probabilities
+        return logits

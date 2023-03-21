@@ -7,7 +7,7 @@ from flax.training import train_state
 from flax import struct
 import optax
 
-import model_combined
+import sandbox.flax.learning_flax.actor_critic.model_utilities as model_utilities
 
 import pdb
 
@@ -65,7 +65,7 @@ def train_step(model_state, agent_state, returns):
 
 
 def main(argv=None):
-    mlp = model_combined.ActorCritic(action_space=3)
+    mlp = model_utilities.ActorCritic(action_space=3)
     print(
         mlp.tabulate(
             jax.random.PRNGKey(42),
