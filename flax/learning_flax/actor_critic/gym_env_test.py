@@ -1,6 +1,8 @@
+import os
 from absl import app
 
 from clu import metrics
+import numpy as np
 import jax
 import jax.numpy as jnp
 from flax.training import train_state
@@ -10,9 +12,9 @@ import gymnasium as gym
 
 import actor
 import critic
-import model_utilities
+import model_utilities as model
 
-import pdb
+os.environ['SDL_VIDEODRIVER'] = 'dummy'
 
 
 def init_params(module, input_size, rng):
@@ -45,7 +47,8 @@ def create_train_state(module, params, learning_rate, momentum):
 
 def main(argv=None):
     # Initialize Environment:
-    env = gym.make('CartPole-v1')
+    env = gym.make('CartPole-v1', render_mode="rgb_array", max_episode_steps=500)
+    env = gym.wrappers.RecordVideo(env=env, video_folder="./video")
     init_rng = jax.random.PRNGKey(42)
     # Initize Networks:
     actor_network = actor.ActorNetwork(action_space=env.action_space.n)
@@ -66,31 +69,75 @@ def main(argv=None):
     print(critic_network.tabulate(jax.random.PRNGKey(0), jnp.ones(env.observation_space.shape)))
 
     # Create a train state:
-    learning_rate = 0.01
+    actor_lr = 0.001
+    critic_lr = 0.005
     momentum = 0.9
     actor_state = create_train_state(
         module=actor_network,
         params=actor_params,
-        learning_rate=learning_rate,
+        learning_rate=actor_lr,
         momentum=momentum,
     )
     critic_state = create_train_state(
         module=critic_network,
         params=critic_params,
-        learning_rate=learning_rate,
+        learning_rate=critic_lr,
         momentum=momentum,
     )
 
-    # Train on Random Data:
-    key = jax.random.PRNGKey(0)
-    epochs = 100
+    # Test Environment:
+    epochs = 2
+    key = jax.random.PRNGKey(42)
+    actor_loss_history = []
+    critic_loss_history = []
     for iteration in range(epochs):
-        num_batch = 1
-        batch_agent_states = jax.random.uniform(key=key, shape=[num_batch, 6])
-        batch_returns = jax.random.uniform(key=key, shape=[num_batch, 1])
-        state, loss = train_step(state, batch_agent_states, batch_returns)
-        if iteration % 10 == 0:
-            print(f'Iteration: {iteration}, Loss: {loss}')
+        states = env.reset()[0]
+        reset_flag = False
+        reward_episode = []
+        states_episode = []
+        while not reset_flag:
+            logits, values = model.forward_pass(
+                actor=actor_network,
+                critic=critic_network,
+                actor_params=actor_params,
+                critic_params=critic_params,
+                x=states,
+            )
+            actions, log_probability, entropy = model.select_action(key=key, logits=logits)
+            states, rewards, terminated, truncated, infos = env.step(action=np.array(actions))
+            if not (terminated or truncated):
+                states_episode.append(states)
+                reward_episode.append(rewards)
+            else:
+                reset_flag = True
+
+        # Convert to Jax Array:
+        states_episode = jnp.asarray(states_episode, dtype=jnp.float32)
+        reward_episode = jnp.asarray(reward_episode, dtype=jnp.float32).flatten()
+
+        critic_state, critic_loss = model.update_critic(
+            actor_state=actor_state,
+            critic_state=critic_state,
+            actor_network=actor_network,
+            critic_network=critic_network,
+            states=states_episode,
+            rewards=reward_episode,
+            key=key,
+        )
+        actor_state, actor_loss = model.update_actor(
+            actor_state=actor_state,
+            critic_state=critic_state,
+            actor_network=actor_network,
+            critic_network=critic_network,
+            states=states_episode,
+            rewards=reward_episode,
+            key=key,
+        )
+
+        actor_loss_history.append(actor_loss)
+        critic_loss_history.append(critic_loss)
+
+    env.close()
 
 
 if __name__ == '__main__':

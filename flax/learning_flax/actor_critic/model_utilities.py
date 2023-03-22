@@ -1,63 +1,187 @@
+import numpy as np
 import jax
 import jax.numpy as jnp
-from jax import random
 import distrax
 
 
-class ModelUtilities():
+def forward_pass_actor(actor, actor_params, x):
+    logits = actor.apply({'params': actor_params}, x)
+    return logits
 
-    def forward_pass(self, actor, critic, actor_params, critic_params, x):
-        logits = actor.apply({'params': actor_params}, x)
-        value = critic.apply({'params': critic_params}, x)
-        return logits, value
 
-    def select_action(self, logits, value):
-        probability_distribution = distrax.Categorical(logits=logits)
-        actions = probability_distribution.sample()
-        log_probability = probability_distribution.log_prob(actions)
-        entropy = probability_distribution.entropy()
-        return (actions, log_probability, value, entropy)
+def forward_pass_critic(critic, critic_params, x):
+    value = critic.apply({'params': critic_params}, x)
+    return value
 
-    def calculate_advantage(self, rewards, value, masks):
-        gamma = 0.999
-        lam = 0.95  # hyperparameter for GAE
 
-        episode_length = len(rewards)
-        gae = 0.0
-        advantage = []
-        for i in reversed(range(episode_length - 1)):
-            error = rewards[i] + gamma * masks[i] * value[i+1] - value[i]
-            gae = error + gamma * lam * masks[i] * gae
-            advantage.append(gae)
+def forward_pass(actor, critic, actor_params, critic_params, x):
+    logits = actor.apply({'params': actor_params}, x)
+    value = critic.apply({'params': critic_params}, x)
+    return logits, value
 
-        advantage = jnp.asarray(
-            advantage.reverse(),
+
+def select_action(key, logits):
+    probability_distribution = distrax.Categorical(logits=logits)
+    actions = probability_distribution.sample(seed=key)
+    log_probability = probability_distribution.log_prob(actions)
+    entropy = probability_distribution.entropy()
+    return actions, log_probability, entropy
+
+
+def calculate_advantage(rewards, value):
+    gamma = 0.999
+    lam = 0.95  # hyperparameter for GAE
+
+    episode_length = len(rewards)
+    gae = 0.0
+    advantage = []
+    advantage.append(jnp.array(0.0, dtype=jnp.float32))
+    for i in reversed(range(episode_length - 1)):
+        error = rewards[i] + gamma * value[i+1] - value[i]
+        gae = error + gamma * lam * gae
+        advantage.append(gae)
+    advantage = jnp.array(advantage, dtype=jnp.float32).flatten()
+    advantage = jnp.flip(advantage)
+    return advantage
+
+
+def critic_loss_function(advantage):
+    loss = jnp.mean(
+        jnp.power(advantage, 2)
+    )
+    return loss
+
+
+def actor_loss_function(advantage, log_probability, entropy):
+    entropy_coeff = 0.01  # coefficient for the entropy bonus (to encourage exploration)
+    loss = (
+        -jnp.mean(
+            jax.lax.stop_gradient(advantage) * log_probability
+        ) - entropy_coeff * jnp.mean(entropy)
+    )
+    return loss
+
+
+# TODO: create single loss function but specific method changes what to take the gradient of.
+def update_critic(
+        actor_state,
+        critic_state,
+        actor_network,
+        critic_network,
+        states,
+        rewards,
+        key,
+):
+    grad_fn = jax.value_and_grad(critic_loss)
+    loss, grads = grad_fn(
+        critic_state.params,
+        actor_params=actor_state.params,
+        actor_network=actor_network,
+        critic_network=critic_network,
+        states=states,
+        rewards=rewards,
+        key=key,
+    )
+    critic_state = critic_state.apply_gradients(grads=grads)
+    return critic_state, loss
+
+
+def update_actor(
+        actor_state,
+        critic_state,
+        actor_network,
+        critic_network,
+        states,
+        rewards,
+        key,
+):
+    grad_fn = jax.value_and_grad(actor_loss)
+    loss, grads = grad_fn(
+        actor_state.params,
+        critic_params=critic_state.params,
+        actor_network=actor_network,
+        critic_network=critic_network,
+        states=states,
+        rewards=rewards,
+        key=key,
+    )
+    actor_state = actor_state.apply_gradients(grads=grads)
+    return actor_state, loss
+
+
+def critic_loss(
+        critic_params,
+        actor_params,
+        actor_network,
+        critic_network,
+        states,
+        rewards,
+        key,
+):
+    episode_length = states.shape[0]
+    value_episode = []
+    for i in range(episode_length):
+        logits, values = forward_pass(
+            actor=actor_network,
+            critic=critic_network,
+            actor_params=actor_params,
+            critic_params=critic_params,
+            x=states[i],
         )
-        return advantage
+        actions, log_probability, entropy = select_action(key=key, logits=logits)
+        value_episode.append(values)
 
-    def critic_loss(self, advantage):
-        loss = jnp.mean(
-            jnp.power(advantage, 2)
+    # Convert to Jax Array:
+    value_episode = jnp.asarray(value_episode, dtype=jnp.float32).flatten()
+
+    advantage_episode = calculate_advantage(
+        rewards=rewards,
+        value=value_episode,
+    )
+    loss = critic_loss_function(
+        advantage=advantage_episode,
+    )
+    return loss
+
+
+def actor_loss(
+        actor_params,
+        critic_params,
+        actor_network,
+        critic_network,
+        states,
+        rewards,
+        key,
+):
+    episode_length = states.shape[0]
+    value_episode = []
+    log_probability_episode = []
+    entropy_episode = []
+    for i in range(episode_length):
+        logits, values = forward_pass(
+            actor=actor_network,
+            critic=critic_network,
+            actor_params=actor_params,
+            critic_params=critic_params,
+            x=states[i],
         )
-        return loss
+        actions, log_probability, entropy = select_action(key=key, logits=logits)
+        value_episode.append(values)
+        log_probability_episode.append(log_probability)
+        entropy_episode.append(entropy)
 
-    def actor_loss(self, advantage, log_probability, entropy):
-        entropy_coeff = 0.01  # coefficient for the entropy bonus (to encourage exploration)
-        loss = (
-            -jnp.mean(
-                jax.lax.stop_gradient(advantage) * log_probability
-            ) - entropy_coeff * jnp.mean(entropy)
-        )
-        return loss
+    # Convert to Jax Array:
+    value_episode = jnp.asarray(value_episode, dtype=jnp.float32).flatten()
+    log_probability_episode = jnp.asarray(log_probability_episode, dtype=jnp.float32).flatten()
+    entropy_episode = jnp.asarray(entropy_episode, dtype=jnp.float32).flatten()
 
-    def update_actor(self, model_state, loss_fn, advantage, log_probability, entropy):
-        grad_fn = jax.value_and_grad(loss_fn)
-        loss, grads = grad_fn(model_state.params, advantage, log_probability, entropy)
-        model_state = model_state.apply_gradients(grads=grads)
-        return model_state, loss
-
-    def update_critic(self, model_state, loss_fn, advantage):
-        grad_fn = jax.value_and_grad(loss_fn)
-        loss, grads = grad_fn(model_state.params, advantage)
-        model_state = model_state.apply_gradients(grads=grads)
-        return model_state, loss
+    advantage_episode = calculate_advantage(
+        rewards=rewards,
+        value=value_episode,
+    )
+    loss = actor_loss_function(
+        advantage=advantage_episode,
+        log_probability=log_probability_episode,
+        entropy=entropy_episode,
+    )
+    return loss
