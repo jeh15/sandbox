@@ -9,6 +9,7 @@ from flax.training import train_state
 from flax import struct
 import optax
 import gymnasium as gym
+import matplotlib.pyplot as plt
 
 import actor
 import critic
@@ -48,7 +49,11 @@ def create_train_state(module, params, learning_rate, momentum):
 def main(argv=None):
     # Initialize Environment:
     env = gym.make('CartPole-v1', render_mode="rgb_array", max_episode_steps=500)
-    env = gym.wrappers.RecordVideo(env=env, video_folder="./video")
+    env = gym.wrappers.RecordVideo(
+        env=env,
+        video_folder="./video",
+        episode_trigger=lambda x: x % 1000 == 0,
+    )
     init_rng = jax.random.PRNGKey(42)
     # Initize Networks:
     actor_network = actor.ActorNetwork(action_space=env.action_space.n)
@@ -86,12 +91,13 @@ def main(argv=None):
     )
 
     # Test Environment:
-    epochs = 2
+    epochs = 1001
     key = jax.random.PRNGKey(42)
     actor_loss_history = []
     critic_loss_history = []
     for iteration in range(epochs):
         states = env.reset()[0]
+        init_states = states
         reset_flag = False
         reward_episode = []
         states_episode = []
@@ -99,12 +105,17 @@ def main(argv=None):
             logits, values = model.forward_pass(
                 actor=actor_network,
                 critic=critic_network,
-                actor_params=actor_params,
-                critic_params=critic_params,
+                actor_params=actor_state.params,
+                critic_params=critic_state.params,
                 x=states,
             )
-            actions, log_probability, entropy = model.select_action(key=key, logits=logits)
-            states, rewards, terminated, truncated, infos = env.step(action=np.array(actions))
+            actions, log_probability, entropy = model.select_action(
+                key=key,
+                logits=logits,
+            )
+            states, rewards, terminated, truncated, infos = env.step(
+                action=np.array(actions),
+            )
             if not (terminated or truncated):
                 states_episode.append(states)
                 reward_episode.append(rewards)
@@ -113,7 +124,10 @@ def main(argv=None):
 
         # Convert to Jax Array:
         states_episode = jnp.asarray(states_episode, dtype=jnp.float32)
-        reward_episode = jnp.asarray(reward_episode, dtype=jnp.float32).flatten()
+        reward_episode = jnp.asarray(
+            reward_episode,
+            dtype=jnp.float32,
+        ).flatten()
 
         critic_state, critic_loss = model.update_critic(
             actor_state=actor_state,
@@ -134,10 +148,21 @@ def main(argv=None):
             key=key,
         )
 
+        if iteration % 100 == 0:
+            print(f'Epoch: {iteration} \t Initial State: {init_states} \t Critic Loss: {critic_loss} \t Actor Loss: {actor_loss}')
+
         actor_loss_history.append(actor_loss)
         critic_loss_history.append(critic_loss)
 
     env.close()
+
+    # Plot Results:
+    fig, ax = plt.subplots(2)
+    fig.tight_layout(pad=2.5)
+    critic_plot, = ax[0].plot(critic_loss_history, color='cornflowerblue', alpha=0.5, linewidth=1.0)
+    actor_plot, = ax[1].plot(actor_loss_history, color='cornflowerblue', alpha=0.5, linewidth=1.0)
+    plt.show()
+    plt.savefig("loss_plot.png")
 
 
 if __name__ == '__main__':

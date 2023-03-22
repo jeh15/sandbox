@@ -6,12 +6,12 @@ class CriticNetwork(nn.Module):
     def setup(self):
         dtype = jnp.float32
         self.dense_1 = nn.Dense(
-            features=64,
+            features=2*64,
             name='layer_1',
             dtype=dtype,
         )
         self.dense_2 = nn.Dense(
-            features=64,
+            features=2*64,
             name='layer_2',
             dtype=dtype,
         )
