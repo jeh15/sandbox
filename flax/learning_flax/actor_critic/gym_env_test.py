@@ -52,7 +52,7 @@ def main(argv=None):
     env = gym.wrappers.RecordVideo(
         env=env,
         video_folder="./video",
-        episode_trigger=lambda x: x % 1000 == 0,
+        episode_trigger=lambda x: x % 200 == 0,
     )
     init_rng = jax.random.PRNGKey(42)
     # Initize Networks:
@@ -69,9 +69,6 @@ def main(argv=None):
         rng=init_rng,
     )
     del init_rng
-
-    print(actor_network.tabulate(jax.random.PRNGKey(0), jnp.ones(env.observation_space.shape)))
-    print(critic_network.tabulate(jax.random.PRNGKey(0), jnp.ones(env.observation_space.shape)))
 
     # Create a train state:
     actor_lr = 0.001
@@ -91,7 +88,7 @@ def main(argv=None):
     )
 
     # Test Environment:
-    epochs = 1001
+    epochs = 2001
     key = jax.random.PRNGKey(42)
     actor_loss_history = []
     critic_loss_history = []
@@ -102,6 +99,7 @@ def main(argv=None):
         reward_episode = []
         states_episode = []
         while not reset_flag:
+            key, subkey = jax.random.split(key)
             logits, values = model.forward_pass(
                 actor=actor_network,
                 critic=critic_network,
@@ -110,7 +108,7 @@ def main(argv=None):
                 x=states,
             )
             actions, log_probability, entropy = model.select_action(
-                key=key,
+                key=subkey,
                 logits=logits,
             )
             states, rewards, terminated, truncated, infos = env.step(
@@ -136,7 +134,7 @@ def main(argv=None):
             critic_network=critic_network,
             states=states_episode,
             rewards=reward_episode,
-            key=key,
+            key=subkey,
         )
         actor_state, actor_loss = model.update_actor(
             actor_state=actor_state,
@@ -145,7 +143,7 @@ def main(argv=None):
             critic_network=critic_network,
             states=states_episode,
             rewards=reward_episode,
-            key=key,
+            key=subkey,
         )
 
         if iteration % 100 == 0:
