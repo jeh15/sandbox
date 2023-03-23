@@ -18,7 +18,7 @@ def select_action(key, logits):
     return actions, log_probability, entropy
 
 
-def calculate_advantage(rewards, value):
+def calculate_advantage(rewards, value, mask):
     gamma = 0.999
     lam = 0.95  # hyperparameter for GAE
 
@@ -27,8 +27,8 @@ def calculate_advantage(rewards, value):
     advantage = []
     advantage.append(jnp.array(0.0, dtype=jnp.float32))
     for i in reversed(range(episode_length - 1)):
-        error = rewards[i] + gamma * value[i+1] - value[i]
-        gae = error + gamma * lam * gae
+        error = rewards[i] + gamma * mask[i] * value[i+1] - value[i]
+        gae = error + gamma * lam * mask[i] * gae
         advantage.append(gae)
     advantage = jnp.array(advantage, dtype=jnp.float32).flatten()
     advantage = jnp.flip(advantage)
@@ -60,6 +60,7 @@ def critic_loss(
         critic_network,
         states,
         rewards,
+        mask,
         key,
 ):
     episode_length = states.shape[0]
@@ -82,6 +83,7 @@ def critic_loss(
     advantage_episode = calculate_advantage(
         rewards=rewards,
         value=value_episode,
+        mask=mask,
     )
     loss = critic_loss_function(
         advantage=advantage_episode,
@@ -96,6 +98,7 @@ def actor_loss(
         critic_network,
         states,
         rewards,
+        mask,
         key,
 ):
     episode_length = states.shape[0]
@@ -124,6 +127,7 @@ def actor_loss(
     advantage_episode = calculate_advantage(
         rewards=rewards,
         value=value_episode,
+        mask=mask,
     )
     loss = actor_loss_function(
         advantage=advantage_episode,
@@ -141,6 +145,7 @@ def update_critic(
         critic_network,
         states,
         rewards,
+        mask,
         key,
 ):
     grad_fn = jax.value_and_grad(critic_loss)
@@ -151,6 +156,7 @@ def update_critic(
         critic_network=critic_network,
         states=states,
         rewards=rewards,
+        mask=mask,
         key=key,
     )
     critic_state = critic_state.apply_gradients(grads=grads)
@@ -164,6 +170,7 @@ def update_actor(
         critic_network,
         states,
         rewards,
+        mask,
         key,
 ):
     grad_fn = jax.value_and_grad(actor_loss)
@@ -174,6 +181,7 @@ def update_actor(
         critic_network=critic_network,
         states=states,
         rewards=rewards,
+        mask=mask,
         key=key,
     )
     actor_state = actor_state.apply_gradients(grads=grads)

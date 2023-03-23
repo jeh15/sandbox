@@ -51,7 +51,8 @@ def create_train_state(module, params, learning_rate):
 
 def main(argv=None):
     # Initialize Environment:
-    env = gym.make('CartPole-v1', render_mode="rgb_array", max_episode_steps=500)
+    max_episode_length = 500
+    env = gym.make('CartPole-v1', render_mode="rgb_array", max_episode_steps=max_episode_length)
     env = gym.wrappers.RecordVideo(
         env=env,
         video_folder="./video",
@@ -88,39 +89,44 @@ def main(argv=None):
     )
 
     # Test Environment:
-    epochs = 2001
+    epochs = 201
     key = jax.random.PRNGKey(42)
     actor_loss_history = []
     critic_loss_history = []
     for iteration in range(epochs):
         states = env.reset()[0]
         init_states = states
-        reset_flag = False
+        mask_episode = []
         reward_episode = []
         states_episode = []
-        while not reset_flag:
-            key, subkey = jax.random.split(key)
-            logits, values = model.forward_pass(
-                actor=actor_network,
-                critic=critic_network,
-                actor_params=actor_state.params,
-                critic_params=critic_state.params,
-                x=states,
-            )
-            actions, log_probability, entropy = model.select_action(
-                key=subkey,
-                logits=logits,
-            )
-            states, rewards, terminated, truncated, infos = env.step(
-                action=np.array(actions),
-            )
-            if not (terminated or truncated):
+        terminated = False
+        for episode_length in range(max_episode_length):
+            if not terminated:
+                key, subkey = jax.random.split(key)
+                logits, values = model.forward_pass(
+                    actor=actor_network,
+                    critic=critic_network,
+                    actor_params=actor_state.params,
+                    critic_params=critic_state.params,
+                    x=states,
+                )
+                actions, log_probability, entropy = model.select_action(
+                    key=subkey,
+                    logits=logits,
+                )
+                states, rewards, terminated, truncated, infos = env.step(
+                    action=np.array(actions),
+                )
+                mask_episode.append(not terminated)
                 states_episode.append(states)
                 reward_episode.append(rewards)
             else:
-                reset_flag = True
+                mask_episode.append(not terminated)
+                states_episode.append(states)
+                reward_episode.append(0)
 
         # Convert to Jax Array:
+        mask_episode = jnp.asarray(mask_episode, dtype=jnp.bool_)
         states_episode = jnp.asarray(states_episode, dtype=jnp.float32)
         reward_episode = jnp.asarray(
             reward_episode,
@@ -134,6 +140,7 @@ def main(argv=None):
             critic_network=critic_network,
             states=states_episode,
             rewards=reward_episode,
+            mask=mask_episode,
             key=subkey,
         )
         actor_state, actor_loss = model.update_actor(
@@ -143,10 +150,11 @@ def main(argv=None):
             critic_network=critic_network,
             states=states_episode,
             rewards=reward_episode,
+            mask=mask_episode,
             key=subkey,
         )
 
-        if iteration % 100 == 0:
+        if iteration % 10 == 0:
             print(f'Epoch: {iteration} \t Initial State: {init_states} \t Critic Loss: {critic_loss} \t Actor Loss: {actor_loss}')
 
         actor_loss_history.append(actor_loss)
