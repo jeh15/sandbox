@@ -23,7 +23,7 @@ def calculate_advantage(rewards, values):
     episode_length = len(rewards)
     gae = 0.0
     advantage = []
-    advantage.append(jnp.array([0.0], dtype=jnp.float32))
+    advantage.append(jnp.array(rewards[-1]-values[-1], dtype=jnp.float32))
     for i in reversed(range(episode_length - 1)):
         error = rewards[i] + gamma * values[i+1] - values[i]
         gae = error + gamma * lam * gae
@@ -39,7 +39,7 @@ def loss_function(
     states,
     key,
 ):
-    entropy_coeff = 0.01
+    entropy_coeff = 0.001
     value_coeff = 0.5
     logits, _ = forward_pass(model_params, apply_fn, states)
     _, log_probability, entropy = select_action(logits, key)

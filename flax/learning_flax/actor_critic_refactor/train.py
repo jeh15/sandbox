@@ -69,7 +69,7 @@ def main(argv=None):
         key=initial_key,
     )
     # Create a train state:
-    learning_rate = 2.5e-4
+    learning_rate = 0.001
     model_state = create_train_state(
         module=network,
         params=initial_params,
@@ -88,16 +88,21 @@ def main(argv=None):
         states_episode = []
         rewards_episode = []
         key, subkey = jax.random.split(subkey)
+        random_flag = 0 if jax.random.uniform(subkey) > 0.1 else 1
         while not reset_flag:
             logits, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states,
             )
-            actions, log_probability, entropy = model_utilities.select_action(
-                logits,
-                subkey,
-            )
+            if not random_flag:
+                actions, log_probability, entropy = model_utilities.select_action(
+                    logits,
+                    subkey,
+                )
+            else:
+                actions = env.action_space.sample()
+
             states, rewards, terminated, truncated, infos = env.step(
                 action=np.array(actions),
             )
@@ -108,7 +113,7 @@ def main(argv=None):
             else:
                 values_episode.append(values)
                 states_episode.append(states)
-                rewards_episode.append(-1.0)
+                rewards_episode.append(rewards)
                 reset_flag = True
 
         values_episode = jnp.asarray(values_episode, dtype=jnp.float32)
@@ -128,8 +133,8 @@ def main(argv=None):
             subkey,
         )
 
-        if iteration % 10 == 0:
-            print(f'Epoch: {iteration} \t Reward: {np.sum(rewards_episode)} \t Loss: {loss}')
+        if iteration % 5 == 0:
+            print(f'Epoch: {iteration} \t Random Policy: {random_flag} \t Reward: {np.sum(rewards_episode)} \t Loss: {loss}')
 
         loss_history.append(loss)
 
