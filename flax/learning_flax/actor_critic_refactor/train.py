@@ -58,7 +58,7 @@ def main(argv=None):
     env = gym.wrappers.RecordVideo(
         env=env,
         video_folder="./video",
-        episode_trigger=lambda x: x % 200 == 0,
+        episode_trigger=lambda x: x % 100 == 0,
     )
     initial_key = jax.random.PRNGKey(42)
     # Initize Networks:
@@ -84,12 +84,11 @@ def main(argv=None):
     for iteration in range(epochs):
         states = env.reset()[0]
         reset_flag = False
-        keys_episode = []
         values_episode = []
         states_episode = []
         rewards_episode = []
+        key, subkey = jax.random.split(subkey)
         while not reset_flag:
-            key, subkey = jax.random.split(subkey)
             logits, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -103,14 +102,15 @@ def main(argv=None):
                 action=np.array(actions),
             )
             if not (terminated or truncated):
-                keys_episode.append(subkey)
                 values_episode.append(values)
                 states_episode.append(states)
                 rewards_episode.append(rewards)
             else:
+                values_episode.append(values)
+                states_episode.append(states)
+                rewards_episode.append(-1.0)
                 reset_flag = True
 
-        keys_episode = jnp.asarray(keys_episode)
         values_episode = jnp.asarray(values_episode, dtype=jnp.float32)
         states_episode = jnp.asarray(states_episode, dtype=jnp.float32)
         rewards_episode = jnp.asarray(rewards_episode, dtype=jnp.float32)
@@ -125,11 +125,11 @@ def main(argv=None):
             model_state,
             advantage_episode,
             states_episode,
-            keys_episode,
+            subkey,
         )
 
-        if iteration % 100 == 0:
-            print(f'Epoch: {iteration} \t Loss: {loss}')
+        if iteration % 10 == 0:
+            print(f'Epoch: {iteration} \t Reward: {np.sum(rewards_episode)} \t Loss: {loss}')
 
         loss_history.append(loss)
 

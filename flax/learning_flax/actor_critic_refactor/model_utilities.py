@@ -17,7 +17,7 @@ def select_action(logits, key):
     return actions, log_probability, entropy
 
 
-def calculate_advantage(rewards, value):
+def calculate_advantage(rewards, values):
     gamma = 0.999
     lam = 0.95
     episode_length = len(rewards)
@@ -25,7 +25,7 @@ def calculate_advantage(rewards, value):
     advantage = []
     advantage.append(jnp.array([0.0], dtype=jnp.float32))
     for i in reversed(range(episode_length - 1)):
-        error = rewards[i] + gamma * value[i+1] - value[i]
+        error = rewards[i] + gamma * values[i+1] - values[i]
         gae = error + gamma * lam * gae
         advantage.append(gae)
     advantage = jnp.array(advantage, dtype=jnp.float32)[::-1]
@@ -37,25 +37,18 @@ def loss_function(
     apply_fn,
     advantage,
     states,
-    keys,
+    key,
 ):
     entropy_coeff = 0.01
     value_coeff = 0.5
-    log_probability = []
-    entropy = []
-    for state, key in zip(states, keys):
-        logits, _ = forward_pass(model_params, apply_fn, state)
-        _, _log_probability, _entropy = select_action(logits, key)
-        log_probability.append(_log_probability)
-        entropy.append(_entropy)
-    log_probability = jnp.array(log_probability, dtype=jnp.float32)
-    entropy = jnp.array(entropy, dtype=jnp.float32)
+    logits, _ = forward_pass(model_params, apply_fn, states)
+    _, log_probability, entropy = select_action(logits, key)
     value_loss = value_coeff * jnp.mean(
         jnp.power(advantage, 2)
     )
     actor_loss = (
         -jnp.mean(
-            jax.lax.stop_gradient(advantage) * log_probability
+            advantage * log_probability
         ) - entropy_coeff * jnp.mean(entropy)
     )
     return actor_loss + value_loss
@@ -65,7 +58,7 @@ def train_step(
     model_state,
     advantage,
     states,
-    keys,
+    key,
 ):
     gradient_function = jax.value_and_grad(loss_function)
     loss, gradients = gradient_function(
@@ -73,7 +66,7 @@ def train_step(
         model_state.apply_fn,
         advantage,
         states,
-        keys,
+        key,
     )
     model_state = model_state.apply_gradients(grads=gradients)
     return model_state, loss
