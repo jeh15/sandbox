@@ -103,7 +103,7 @@ def main(argv=None):
             else:
                 actions = env.action_space.sample()
 
-            states, rewards, terminated, truncated, infos = env.step(
+            next_states, rewards, terminated, truncated, infos = env.step(
                 action=np.array(actions),
             )
             if not (terminated or truncated):
@@ -115,6 +115,7 @@ def main(argv=None):
                 states_episode.append(states)
                 rewards_episode.append(rewards)
                 reset_flag = True
+            states = next_states
 
         values_episode = jnp.asarray(values_episode, dtype=jnp.float32)
         states_episode = jnp.asarray(states_episode, dtype=jnp.float32)
