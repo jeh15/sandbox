@@ -50,10 +50,10 @@ def create_train_state(module, params, learning_rate):
 
 def main(argv=None):
     # Initialize Environment:
-    epochs = 10001
-    num_batch = 1
-    num_steps = 200
-    sample_rate = 1000
+    epochs = 1001
+    num_batch = 32
+    num_steps = 100
+    sample_rate = 500
     env = gym.make(
         'CartPole-v1',
         render_mode="rgb_array",
@@ -83,7 +83,6 @@ def main(argv=None):
 
     # Test Environment:
     key, subkey = jax.random.split(initial_key)
-    loss_history = []
     for iteration in range(epochs):
         values_episode = np.zeros(
             (num_batch, num_steps, 1),
@@ -91,6 +90,14 @@ def main(argv=None):
         )
         states_episode = np.zeros(
             (num_batch, num_steps, env.observation_space.shape[0]),
+            dtype=np.float32,
+        )
+        actions_episode = np.zeros(
+            (num_batch, num_steps, 1),
+            dtype=np.int16,
+        )
+        log_probability_episode = np.zeros(
+            (num_batch, num_steps, 1),
             dtype=np.float32,
         )
         rewards_episode = np.zeros(
@@ -127,11 +134,15 @@ def main(argv=None):
                     action=np.array(actions),
                 )
                 if not (terminated or truncated):
+                    actions_episode[batch, step_iterator, :] = actions
+                    log_probability_episode[batch, step_iterator, :] = log_probability
                     values_episode[batch, step_iterator, :] = values
                     states_episode[batch, step_iterator, :] = states
                     rewards_episode[batch, step_iterator, :] = rewards
                     masks_episode[batch, step_iterator, :] = 1
                 else:
+                    actions_episode[batch, step_iterator:, :] = actions
+                    log_probability_episode[batch, step_iterator:, :] = log_probability
                     values_episode[batch, step_iterator:, :] = values
                     states_episode[batch, step_iterator:, :] = states
                     rewards_episode[batch, step_iterator:, :] = 0
@@ -145,7 +156,7 @@ def main(argv=None):
         rewards_episode = jnp.asarray(rewards_episode)
         masks_episode = jnp.asarray(masks_episode)
 
-        advantage_episode = model_utilities.calculate_advantage(
+        advantage_episode, returns_episode = model_utilities.calculate_advantage(
             rewards_episode,
             values_episode,
             masks_episode,
@@ -156,8 +167,10 @@ def main(argv=None):
         model_state, loss = model_utilities.train_step(
             model_state,
             advantage_episode,
+            returns_episode,
             states_episode,
-            subkey,
+            actions_episode,
+            log_probability_episode,
             num_batch,
             num_steps,
         )
@@ -165,16 +178,7 @@ def main(argv=None):
         if iteration % 5 == 0:
             print(f'Epoch: {iteration} \t Number of Random Policies: {np.sum(random_flag_episode)} \t Average Reward: {np.mean(np.sum(rewards_episode, axis=1))} \t Loss: {loss}')
 
-        loss_history.append(loss)
-
     env.close()
-
-    # Plot Results:
-    fig, ax = plt.subplots()
-    fig.tight_layout(pad=2.5)
-    loss_plot, = ax.plot(loss_history, color='cornflowerblue', alpha=0.5, linewidth=1.0)
-    plt.show()
-    plt.savefig("loss_plot.png")
 
 
 if __name__ == '__main__':

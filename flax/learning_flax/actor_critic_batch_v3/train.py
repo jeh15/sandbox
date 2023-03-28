@@ -50,10 +50,10 @@ def create_train_state(module, params, learning_rate):
 
 def main(argv=None):
     # Initialize Environment:
-    epochs = 10001
-    num_batch = 1
+    epochs = 1001
+    num_batch = 32
     num_steps = 200
-    sample_rate = 1000
+    sample_rate = 100
     env = gym.make(
         'CartPole-v1',
         render_mode="rgb_array",

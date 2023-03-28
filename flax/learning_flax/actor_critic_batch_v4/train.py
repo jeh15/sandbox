@@ -11,7 +11,8 @@ import optax
 import gymnasium as gym
 import matplotlib.pyplot as plt
 
-import model
+import policy_model
+import value_model
 import model_utilities
 
 os.environ['SDL_VIDEODRIVER'] = 'dummy'
@@ -50,10 +51,10 @@ def create_train_state(module, params, learning_rate):
 
 def main(argv=None):
     # Initialize Environment:
-    epochs = 10001
-    num_batch = 1
+    epochs = 1001
+    num_batch = 16
     num_steps = 200
-    sample_rate = 1000
+    sample_rate = 500
     env = gym.make(
         'CartPole-v1',
         render_mode="rgb_array",
@@ -66,24 +67,34 @@ def main(argv=None):
     )
     initial_key = jax.random.PRNGKey(42)
     # Initize Networks:
-    network = model.ActorCriticNetwork(action_space=env.action_space.n)
-    initial_params = init_params(
-        module=network,
+    actor_network = policy_model.PolicyNetwork(action_space=env.action_space.n)
+    critic_network = value_model.ValueNetwork()
+    actor_initial_params = init_params(
+        module=actor_network,
+        input_size=env.observation_space.shape,
+        key=initial_key,
+    )
+    critic_initial_params = init_params(
+        module=critic_network,
         input_size=env.observation_space.shape,
         key=initial_key,
     )
     # Create a train state:
     learning_rate = 0.001
-    model_state = create_train_state(
-        module=network,
-        params=initial_params,
+    actor_model_state = create_train_state(
+        module=actor_network,
+        params=actor_initial_params,
         learning_rate=learning_rate,
     )
-    del initial_params
+    critic_model_state = create_train_state(
+        module=critic_network,
+        params=critic_initial_params,
+        learning_rate=learning_rate,
+    )
+    del actor_initial_params, critic_initial_params
 
     # Test Environment:
     key, subkey = jax.random.split(initial_key)
-    loss_history = []
     for iteration in range(epochs):
         values_episode = np.zeros(
             (num_batch, num_steps, 1),
@@ -110,9 +121,14 @@ def main(argv=None):
             random_flag_episode.append(random_flag)
             step_iterator = 0
             while not reset_flag:
-                logits, values = model_utilities.forward_pass(
-                    model_state.params,
-                    model_state.apply_fn,
+                logits = model_utilities.actor_forward_pass(
+                    actor_model_state.params,
+                    actor_model_state.apply_fn,
+                    states,
+                )
+                values = model_utilities.critic_forward_pass(
+                    critic_model_state.params,
+                    critic_model_state.apply_fn,
                     states,
                 )
                 if not random_flag:
@@ -145,7 +161,7 @@ def main(argv=None):
         rewards_episode = jnp.asarray(rewards_episode)
         masks_episode = jnp.asarray(masks_episode)
 
-        advantage_episode = model_utilities.calculate_advantage(
+        advantage_episode, returns_episode = model_utilities.calculate_advantage(
             rewards_episode,
             values_episode,
             masks_episode,
@@ -153,9 +169,11 @@ def main(argv=None):
         )
 
         # Update Function:
-        model_state, loss = model_utilities.train_step(
-            model_state,
+        actor_model_state, critic_model_state, policy_loss, value_loss = model_utilities.train_step(
+            actor_model_state,
+            critic_model_state,
             advantage_episode,
+            returns_episode,
             states_episode,
             subkey,
             num_batch,
@@ -163,18 +181,10 @@ def main(argv=None):
         )
 
         if iteration % 5 == 0:
-            print(f'Epoch: {iteration} \t Number of Random Policies: {np.sum(random_flag_episode)} \t Average Reward: {np.mean(np.sum(rewards_episode, axis=1))} \t Loss: {loss}')
+            print(f'Epoch: {iteration} \t Number of Random Policies: {np.sum(random_flag_episode)} \t Average Reward: {np.mean(np.sum(rewards_episode, axis=1))} \t Policy Loss: {policy_loss} \t Value Loss: {value_loss}')
 
-        loss_history.append(loss)
 
     env.close()
-
-    # Plot Results:
-    fig, ax = plt.subplots()
-    fig.tight_layout(pad=2.5)
-    loss_plot, = ax.plot(loss_history, color='cornflowerblue', alpha=0.5, linewidth=1.0)
-    plt.show()
-    plt.savefig("loss_plot.png")
 
 
 if __name__ == '__main__':
