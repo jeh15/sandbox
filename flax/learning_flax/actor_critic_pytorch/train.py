@@ -44,9 +44,9 @@ def main(argv=None):
     # Setup Gym Environment:
     num_envs = 32
     max_episode_length = 700
-    epsilon = 0.25
+    epsilon = 1.0
     reward_threshold = max_episode_length - epsilon
-    training_length = 5000
+    training_length = 400
     video_rate = 1000
     envs = gym.vector.SyncVectorEnv(
         [make_environment(key + i, i, max_episode_length=max_episode_length, video_rate=video_rate, video_enable=False) for i in range(num_envs)]
@@ -63,9 +63,9 @@ def main(argv=None):
     # Create Environment Wrapper to record Statistics:
     envs_wrapper = gym.wrappers.RecordEpisodeStatistics(envs, deque_size=num_envs * training_length)
     previous_log_probability_episode = torch.zeros(
-            (max_episode_length, num_envs),
-            device=device,
-        )
+        (max_episode_length, num_envs),
+        device=device,
+    )
     reward_history = []
     running_average_reward = 0.0
     states, info = envs_wrapper.reset(seed=key)
@@ -154,7 +154,7 @@ def main(argv=None):
     if not os.path.exists("weights"):
         os.mkdir("weights")
 
-    torch.save(agent.state_dict(), "weights/model_weights.h5")
+    torch.save(agent.state_dict(), "weights/model_weights_new.h5")
 
 
 if __name__ == '__main__':

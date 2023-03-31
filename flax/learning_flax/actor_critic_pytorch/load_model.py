@@ -1,4 +1,5 @@
 from absl import app
+from absl import flags
 
 import torch
 import gymnasium as gym
@@ -7,48 +8,48 @@ import gymnasium as gym
 import model_v2 as model
 
 
-def make_environment(key, index, max_episode_length, video_rate, video_enable):
-    def thunk():
-        env = gym.make(
-            'CartPole-v1',
-            render_mode="rgb_array",
-            max_episode_steps=max_episode_length,
-        )
-        if video_enable:
-            if index == 0:
-                env = gym.wrappers.RecordVideo(
-                    env=env,
-                    video_folder="./video",
-                    episode_trigger=lambda x: x % (video_rate) == 0,
-                )
-        env.np_random = key
-        return env
-    return thunk
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string(
+    'model_weights',
+    None,
+    'File path to pretrained pytorch model.',
+)
+flags.DEFINE_string(
+    'environment_id',
+    'CartPole-v1',
+    'Environment ID to simulate.',
+)
+flags.DEFINE_integer(
+    'episode_length',
+    500,
+    'Max length that an episode will play out.',
+)
 
 
 def main(argv=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    max_episode_length = 700
     env = gym.make(
-            'CartPole-v1',
+            FLAGS.environment_id,
             render_mode="rgb_array",
-            max_episode_steps=max_episode_length,
+            max_episode_steps=FLAGS.episode_length,
     )
     env = gym.wrappers.RecordVideo(
         env=env,
         video_folder="./video",
         episode_trigger=lambda x: x == 0,
+        name_prefix='pretrained-replay'
     )
 
     agent = model.ActorCriticNetwork(
         observation_space=env.observation_space.shape[0],
         action_space=env.action_space.n,
     ).to(device)
-    agent.load_state_dict(torch.load('./weights/model_weights.h5'))
+    if FLAGS.model_weights is not None:
+        agent.load_state_dict(torch.load(FLAGS.model_weights))
     agent.eval()
 
     states, infos = env.reset()
-
     done = False
     while not done:
         with torch.no_grad():
