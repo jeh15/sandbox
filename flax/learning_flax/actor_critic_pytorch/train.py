@@ -42,7 +42,7 @@ def main(argv=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Setup Gym Environment:
-    num_envs = 32
+    num_envs = 1
     max_episode_length = 700
     epsilon = 1.0
     reward_threshold = max_episode_length - epsilon
