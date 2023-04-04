@@ -274,6 +274,9 @@ imgs/
 *.3dm
 *.max
 
+# Video
+*.mp4
+
 ## Bazel
 # Ignore backup files.
 *~

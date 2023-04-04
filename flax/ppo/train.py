@@ -56,9 +56,9 @@ def main(argv=None):
     key_seed = 42
 
     # Setup Gym Environment:
-    num_envs = 32
+    num_envs = 512
     max_episode_length = 500
-    epsilon = 0.0
+    epsilon = 0.1
     reward_threshold = max_episode_length - epsilon
     training_length = 1000
     video_rate = 500
