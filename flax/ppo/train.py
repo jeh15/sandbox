@@ -54,9 +54,10 @@ def create_train_state(module, params, learning_rate):
 def main(argv=None):
     # RNG Key:
     key_seed = 42
-
+    checkpoint_flag = False
+    
     # Setup Gym Environment:
-    num_envs = 512
+    num_envs = 32
     max_episode_length = 500
     epsilon = 0.1
     reward_threshold = max_episode_length - epsilon
@@ -179,12 +180,13 @@ def main(argv=None):
 
     envs_wrapper.close()
 
-    CKPT_DIR = './checkpoints'
-    checkpoints.save_checkpoint(
-        ckpt_dir=CKPT_DIR,
-        target=model_state,
-        step=iteration,
-    )
+    if checkpoint_flag:
+        CKPT_DIR = './checkpoints'
+        checkpoints.save_checkpoint(
+            ckpt_dir=CKPT_DIR,
+            target=model_state,
+            step=iteration,
+        )
 
     # Record Learned Policy:
     env = gym.make(
