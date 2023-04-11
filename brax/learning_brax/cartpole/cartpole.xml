@@ -2,13 +2,12 @@
     <compiler inertiafromgeom='true'/>
     <option timestep="0.005"/>
     <worldbody>
-        <geom name='floor' pos='0 0 -1' size='4 4 4' type='plane'/>
         <body name='cart' pos='0 0 0'>
             <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-1 1' damping='0.05'/>
-            <geom name='cart' type='box' pos='0 0 0' size='0.2 0.1 0.05'/>
+            <geom name='cart_geom' type='box' pos='0 0 0' size='0.2 0.1 0.05'/>
             <body name='pole' pos='0 0 0'>
                 <joint name='revolute_joint' type='hinge' axis='0 1 0' damping='0.05'/>
-                <geom name='end_effector' type='sphere' pos='0 0 -0.2' size='0.05'/>
+                <geom name='end_effector' type='sphere' pos='0 0 -0.2' size='0.01'/>
             </body>
         </body>
     </worldbody>

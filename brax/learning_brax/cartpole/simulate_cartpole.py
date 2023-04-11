@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import brax
 from brax.io import mjcf
-from brax.generalized import pipeline
+from brax.spring import pipeline
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
@@ -19,17 +19,18 @@ def visualize(fig, writer_obj, plt, patch, state, width, height):
     # Update Pole: (x, z) position
     q = state.x.rot[-1]
     v = jnp.array([0, 0, -0.2], dtype=jnp.float32)
-    end_effector = quat.rotate(q=q, v=v)
+    end_effector = quat.rotate(q=q, v=v) + state.x.pos[-1]
     plt.set_data(
         [state.x.pos[0][0], end_effector[0]],
         [state.x.pos[0][-1], end_effector[-1]],
     )
     # Update Patch: (x, z) position
-    patch.set(
+    patch[0].set(
         xy=(
             state.x.pos[0][0] - width / 2, state.x.pos[0][-1] - height / 2
         ),
     )
+    patch[1].center = end_effector[0], end_effector[-1]
     # Update Drawing:
     fig.canvas.draw()
     # Grab and Save Frame:
@@ -40,6 +41,7 @@ def visualize(fig, writer_obj, plt, patch, state, width, height):
 def main(argv=None):
     # Load Mujoco model from xml file:
     # file_path = "repository/sandbox/brax/learning_brax/cartpole/cartpole.xml"
+    # file_path = "sandbox/brax/learning_brax/cartpole/cartpole.xml"
     file_path = "./cartpole.xml"
     cartpole = mjcf.load(path=file_path)
 
@@ -48,9 +50,9 @@ def main(argv=None):
         [position, angle]
         q: [x, theta]
     """
-    initial_angle = 70
-    q = jnp.array([0, initial_angle * jnp.pi / 180, 0])
-    qd = jnp.zeros(cartpole.qd_size())
+    initial_angle = 170
+    q = jnp.array([0, initial_angle * jnp.pi / 180])
+    qd = jnp.array([0, 0])
     state = jax.jit(pipeline.init)(cartpole, q, qd)
 
     # Run Simulation:
@@ -63,23 +65,26 @@ def main(argv=None):
 
     # Create plot handles for visualization:
     fig, ax = plt.subplots()
-    pole, = ax.plot([], [], color='royalblue')
+    pole, = ax.plot([], [], color='royalblue', zorder=10)
     lb, ub = -1, 1
     ax.axis('equal')
     ax.set_xlim([lb, ub])
-    ax.set_xlabel('X')  # X Label
-    ax.set_ylabel('Z')  # Y Label
+    ax.set_xlabel('X')
+    ax.set_ylabel('Z')
     ax.set_title('Cart Pole Simulation:')
 
     # Initialize Patch: (Cart)
-    width = cartpole.geoms[1].halfsize[0][0]
-    height = cartpole.geoms[1].halfsize[0][2]
+    width = cartpole.geoms[0].halfsize[0][0]
+    height = cartpole.geoms[0].halfsize[0][2]
+    radius = cartpole.geoms[-1].radius[0]
     xy_cart = (state.x.pos[0][0] - width / 2, -height / 2)
-    cart_patch = Rectangle(xy_cart, width, height, color='cornflowerblue')
+    cart_patch = Rectangle(xy_cart, width, height, color='cornflowerblue', zorder=5)
+    mass_patch = Circle((0, 0), radius=radius, color='cornflowerblue', zorder=15)
     ax.add_patch(cart_patch)
+    ax.add_patch(mass_patch)
 
     # Ground:
-    ground = ax.hlines(-height / 2, lb, ub, colors='black')
+    ground = ax.hlines(0, lb, ub, colors='black', linestyles='--', zorder=0)
 
     # Create video writer:
     fps = 24
@@ -87,11 +92,11 @@ def main(argv=None):
     writer_obj = FFMpegWriter(fps=fps)
     with writer_obj.saving(fig, "cartpole_simulation.mp4", 300):
         for simulation_step in range(0, simulation_length, rate):
-            fig, writer_obj, cart_patch = visualize(
+            fig, writer_obj, (cart_patch, mass_patch) = visualize(
                 fig=fig,
                 writer_obj=writer_obj,
                 plt=pole,
-                patch=cart_patch,
+                patch=(cart_patch, mass_patch),
                 state=states[simulation_step],
                 width=width,
                 height=height,
