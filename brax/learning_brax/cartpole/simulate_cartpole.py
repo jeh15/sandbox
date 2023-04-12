@@ -1,12 +1,13 @@
 import os
-from absl import app, flags
+import pathlib
+from absl import app
 
 import numpy as np
 import jax
 import jax.numpy as jnp
 import brax
 from brax.io import mjcf
-from brax.spring import pipeline
+from brax.generalized import pipeline
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
@@ -30,6 +31,7 @@ def visualize(fig, writer_obj, plt, patch, state, width, height):
             state.x.pos[0][0] - width / 2, state.x.pos[0][-1] - height / 2
         ),
     )
+    # patch[1].center = end_effector[0], end_effector[-1]
     patch[1].center = end_effector[0], end_effector[-1]
     # Update Drawing:
     fig.canvas.draw()
@@ -39,11 +41,18 @@ def visualize(fig, writer_obj, plt, patch, state, width, height):
 
 
 def main(argv=None):
-    # Load Mujoco model from xml file:
-    # file_path = "repository/sandbox/brax/learning_brax/cartpole/cartpole.xml"
-    # file_path = "sandbox/brax/learning_brax/cartpole/cartpole.xml"
-    file_path = "./cartpole.xml"
-    cartpole = mjcf.load(path=file_path)
+    # Find and load Mujoco model from xml file:
+    filename = r'cartpole.xml'
+    cwd_path = pathlib.PurePath(
+        os.getcwd(),
+    )
+    for root, dirs, files in os.walk(cwd_path):
+        for name in files:
+            if name == filename:
+                filepath = pathlib.PurePath(
+                    os.path.abspath(os.path.join(root, name)),
+                )
+    cartpole = mjcf.load(path=filepath)
 
     # Initial States of the Cart Pole:
     """
@@ -52,7 +61,7 @@ def main(argv=None):
     """
     initial_angle = 170
     q = jnp.array([0, initial_angle * jnp.pi / 180])
-    qd = jnp.array([0, 0])
+    qd = jnp.array([0.25, 0])
     state = jax.jit(pipeline.init)(cartpole, q, qd)
 
     # Run Simulation:
@@ -76,7 +85,7 @@ def main(argv=None):
     # Initialize Patch: (Cart)
     width = cartpole.geoms[0].halfsize[0][0]
     height = cartpole.geoms[0].halfsize[0][2]
-    radius = cartpole.geoms[-1].radius[0]
+    radius = 0.01
     xy_cart = (state.x.pos[0][0] - width / 2, -height / 2)
     cart_patch = Rectangle(xy_cart, width, height, color='cornflowerblue', zorder=5)
     mass_patch = Circle((0, 0), radius=radius, color='cornflowerblue', zorder=15)
