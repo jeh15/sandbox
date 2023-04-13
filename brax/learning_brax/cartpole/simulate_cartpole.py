@@ -48,7 +48,7 @@ def main(argv=None):
     )
     for root, dirs, files in os.walk(cwd_path):
         for name in files:
-            if name == filename:
+            if name == filename and os.path.basename == 'assets':
                 filepath = pathlib.PurePath(
                     os.path.abspath(os.path.join(root, name)),
                 )
