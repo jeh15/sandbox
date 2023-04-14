@@ -8,6 +8,9 @@ from brax.envs.env import Env
 
 import cartpole
 import visualize_cartpole as visualizer
+import custom_wrapper
+
+import time
 
 
 def create_environment(
@@ -34,34 +37,49 @@ def create_environment(
     if batch_size:
         env = wrapper.VmapWrapper(env, batch_size)
     if auto_reset:
-        env = wrapper.AutoResetWrapper(env)
+        env = custom_wrapper.AutoResetWrapper(env)
 
     return env
 
 
 def main(argv=None):
+    # Parameters:
+    training_length = 5000
+    batch_size = 512
+
     # RNG Key:
     key_seed = 0
     key = jax.random.PRNGKey(key_seed)
-
-    training_length = 5000
 
     env = create_environment(
         episode_length=1000,
         action_repeat=1,
         auto_reset=True,
+        batch_size=batch_size,
     )
 
+    t = time.perf_counter()
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
+    elapsed_time = time.perf_counter() - t
+    print(f'JIT Compile Time: {elapsed_time:.2f} s')
 
     state = reset_fn(rng=key)
     states = []
+    t = time.perf_counter()
     for iteration in range(training_length):
-        state = step_fn(state, jnp.array([0], dtype=jnp.float32))
+        key, subkey = jax.random.split(key)
+        state = step_fn(
+            state, jnp.zeros((batch_size, 1), dtype=jnp.float32), subkey,
+        )
         states.append(state)
+    elapsed_time = time.perf_counter() - t
+    print(f'Simulation Time: {elapsed_time:.2f} s for {batch_size} simulations')
 
-    visualizer.generate_video(env=env, states=states)
+    visualize_batches = 32
+    visualizer.generate_batch_video(
+        env=env, states=states, batch_size=visualize_batches,
+    )
 
 
 if __name__ == '__main__':
