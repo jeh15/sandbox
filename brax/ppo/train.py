@@ -1,34 +1,49 @@
 from absl import app
+from typing import Optional
 
 import numpy as np
 import jax
 import jax.numpy as jnp
-from flax.training import train_state, checkpoints
 import optax
-import gymnasium as gym
+from flax.training import train_state, checkpoints
+from brax.envs import wrapper
+from brax.envs.env import Env
+
 
 import model
 import model_utilities
+import cartpole
+import visualize_cartpole as visualizer
+import custom_wrapper
 
 
-def make_environment(key, index, max_episode_length, video_rate, video_enable):
-    def thunk():
-        env = gym.make(
-            'CartPole-v1',
-            render_mode="rgb_array",
-            max_episode_steps=max_episode_length,
-        )
-        if video_enable:
-            if index == 0:
-                env = gym.wrappers.RecordVideo(
-                    env=env,
-                    video_folder="./video",
-                    episode_trigger=lambda x: x % (video_rate) == 0,
-                    disable_logger=True,
-                )
-        env.np_random = key
-        return env
-    return thunk
+def create_environment(
+    episode_length: int = 1000,
+    action_repeat: int = 1,
+    auto_reset: bool = True,
+    batch_size: Optional[int] = None,
+    **kwargs,
+) -> Env:
+    """Creates an environment from the registry.
+    Args:
+        episode_length: length of episode
+        action_repeat: how many repeated actions to take per environment step
+        auto_reset: whether to auto reset the environment after an episode is done
+        batch_size: the number of environments to batch together
+        **kwargs: keyword argments that get passed to the Env class constructor
+    Returns:
+        env: an environment
+    """
+    env = cartpole.CartPole(**kwargs)
+
+    if episode_length is not None:
+        env = wrapper.EpisodeWrapper(env, episode_length, action_repeat)
+    if batch_size:
+        env = wrapper.VmapWrapper(env, batch_size)
+    if auto_reset:
+        env = custom_wrapper.AutoResetWrapper(env)
+
+    return env
 
 
 def init_params(module, input_size, key):
@@ -57,16 +72,19 @@ def main(argv=None):
     checkpoint_flag = False
 
     # Setup Gym Environment:
-    num_envs = 32
+    num_envs = 512
     max_episode_length = 500
     epsilon = 0.1
     reward_threshold = max_episode_length - epsilon
     training_length = 1000
-    video_rate = 500
-    envs = gym.vector.SyncVectorEnv(
-        [make_environment(key_seed + i, i, max_episode_length=max_episode_length, video_rate=video_rate, video_enable=False) for i in range(num_envs)]
+    env = create_environment(
+        episode_length=max_episode_length,
+        action_repeat=1,
+        auto_reset=True,
+        batch_size=num_envs,
     )
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    step_fn = jax.jit(env.step)
+    reset_fn = jax.jit(env.reset)
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
@@ -86,8 +104,7 @@ def main(argv=None):
     del initial_params
 
     # Test Environment:
-    envs_wrapper = gym.wrappers.RecordEpisodeStatistics(envs, deque_size=num_envs * training_length)
-    key, subkey = jax.random.split(initial_key)
+    key, reset_key, env_key = jax.random.split(initial_key, 3)
     for iteration in range(training_length):
         states_episode = np.zeros(
             (max_episode_length, num_envs, 4),
@@ -113,9 +130,12 @@ def main(argv=None):
             (max_episode_length, num_envs),
             dtype=np.int16,
         )
-        states, info = envs_wrapper.reset(seed=key_seed+iteration)
+        # Reset all environments:
+        key, reset_key = jax.random.split(reset_key)
+        states = reset_fn(subkey)
         for step in range(max_episode_length):
-            key, subkey = jax.random.split(subkey)
+            # Provide new keys to auto-reset environments:
+            key, env_key = jax.random.split(env_key)
             logits, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -123,10 +143,12 @@ def main(argv=None):
             )
             actions, log_probability, entropy = model_utilities.select_action(
                 logits,
-                subkey,
+                env_key,
             )
-            next_states, rewards, terminated, truncated, infos = envs_wrapper.step(
-                action=np.array(actions),
+            next_states = step_fn(
+                states,
+                actions,
+                env_key,
             )
             states_episode[step] = states
             values_episode[step] = np.squeeze(values)

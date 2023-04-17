@@ -44,8 +44,8 @@ def create_environment(
 
 def main(argv=None):
     # Parameters:
-    training_length = 5000
-    batch_size = 8192
+    training_length = 1000
+    batch_size = 256
 
     # RNG Key:
     key_seed = 0
@@ -70,14 +70,17 @@ def main(argv=None):
     zero_action = jnp.zeros((batch_size, 1), dtype=jnp.float32)
     for iteration in range(training_length):
         key, subkey = jax.random.split(key)
+        random_action = jax.random.uniform(
+            key=subkey, shape=(batch_size, 1), dtype=jnp.float32, minval=-1, maxval=1,
+        )
         state = step_fn(
-            state, zero_action, subkey,
+            state, random_action, subkey,
         )
         states.append(state)
     elapsed_time = time.perf_counter() - t
     print(f'Simulation Time: {elapsed_time:.2f} s for {batch_size} simulations')
 
-    visualize_batches = 36
+    visualize_batches = 4
     visualizer.generate_batch_video(
         env=env, states=states, batch_size=visualize_batches,
     )
