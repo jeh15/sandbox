@@ -28,6 +28,11 @@ def evaluate_action(logits, action):
     return log_probability, entropy
 
 
+@jax.jit
+def map_action(action):
+    return jnp.where(action == 0, -1.0, 1.0)
+
+
 @functools.partial(jax.jit, static_argnames=['episode_length'])
 def calculate_advantage(rewards, values, mask, episode_length):
     gamma = 0.99

@@ -52,7 +52,8 @@ class CartPole(env.PipelineEnv):
         )
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)
-        reward, done = jnp.zeros(2)
+        reward = -jnp.cos(obs[1])
+        done = jnp.array(0, dtype=jnp.float32)
         metrics = {}
 
         return env.State(pipeline_state, obs, reward, done, metrics)
@@ -62,7 +63,18 @@ class CartPole(env.PipelineEnv):
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
         obs = self._get_obs(pipeline_state)
         reward = -jnp.cos(obs[1])
-        done = jnp.where(jnp.abs(obs[0]) >= 1.0, 1.0, 0.0)
+        # Two Reset Conditions: If |x| >= 1 or |theta| >= 0.2
+        x = jnp.abs(obs[0])
+        theta = jnp.abs(
+            jnp.abs(obs[1]) - jnp.pi
+        )
+        terminal_state = jnp.array(
+            [
+                jnp.where(x >= 1.0, 1.0, 0.0),
+                jnp.where(theta > 0.2, 1.0, 0.0),
+            ],
+        )
+        done = jnp.where(terminal_state.any(), 1.0, 0.0)
         return state.replace(
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
         )
@@ -70,6 +82,10 @@ class CartPole(env.PipelineEnv):
     @property
     def action_size(self):
         return 1
+
+    @property
+    def num_actions(self):
+        return 2
 
     def _get_obs(self, pipeline_state: base.State) -> jnp.ndarray:
         """Observe cartpole body position and velocities."""

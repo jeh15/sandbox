@@ -6,10 +6,10 @@
 		<joint armature="0" damping="1"/>
 		<geom contype="0" friction="1 0.1 0.1" />
 		<tendon/>
-		<motor ctrlrange="-1 1"/>
+		<motor ctrlrange="-3 3"/>
 	</default>
 
-	<option gravity="0 0 -9.81" timestep="0.005" />
+	<option gravity="0 0 -9.81" timestep="0.01" />
 
     <custom>
 		<!-- brax custom params -->
@@ -31,7 +31,7 @@
     </worldbody>
 
     <actuator>
-        <motor name='slide' joint='slider' gear='50' ctrllimited='true' ctrlrange='-1 1'/>
+        <motor name='slide' joint='slider' gear='100' ctrllimited='true' ctrlrange='-3 3'/>
     </actuator>
 
 </mujoco>

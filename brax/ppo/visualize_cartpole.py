@@ -14,6 +14,7 @@ def generate_batch_video(
         env: env.Env,
         states: List[env.State],
         batch_size: int,
+        name: str,
 ):
     # Subplot Layout: (Finds closest square)
     layout = np.floor(
@@ -64,7 +65,7 @@ def generate_batch_video(
     rate = int(1.0 / (env.dt * fps))
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
-    with writer_obj.saving(fig, "cartpole_simulation.mp4", 300):
+    with writer_obj.saving(fig, name + ".mp4", 300):
         for simulation_step in tqdm(range(0, video_length, rate)):
             fig, writer_obj, plts, (cart_patch, mass_patch) = _visualize_batch(
                 fig=fig,
@@ -80,6 +81,7 @@ def generate_batch_video(
 def generate_video(
         env: env.Env,
         states: List[env.State],
+        name: str,
 ):
     # Create plot handles for visualization:
     fig, ax = plt.subplots()
@@ -113,7 +115,7 @@ def generate_video(
     rate = int(1.0 / (env.dt * fps))
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
-    with writer_obj.saving(fig, "cartpole_simulation.mp4", 300):
+    with writer_obj.saving(fig, name + ".mp4", 300):
         for simulation_step in range(0, video_length, rate):
             fig, writer_obj, (cart_patch, mass_patch) = _visualize(
                 fig=fig,

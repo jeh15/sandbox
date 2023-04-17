@@ -72,9 +72,9 @@ def main(argv=None):
     checkpoint_flag = False
 
     # Setup Gym Environment:
-    num_envs = 512
+    num_envs = 256
     max_episode_length = 500
-    epsilon = 0.1
+    epsilon = 5.0
     reward_threshold = max_episode_length - epsilon
     training_length = 1000
     env = create_environment(
@@ -88,10 +88,10 @@ def main(argv=None):
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
-    network = model.ActorCriticNetwork(action_space=envs.single_action_space.n)
+    network = model.ActorCriticNetwork(action_space=env.num_actions)
     initial_params = init_params(
         module=network,
-        input_size=envs.single_observation_space.shape[0],
+        input_size=env.observation_size,
         key=initial_key,
     )
     # Create a train state:
@@ -132,38 +132,45 @@ def main(argv=None):
         )
         # Reset all environments:
         key, reset_key = jax.random.split(reset_key)
-        states = reset_fn(subkey)
+        states = reset_fn(reset_key)
+        state_history = []
+        state_history.append(states)
         for step in range(max_episode_length):
             # Provide new keys to auto-reset environments:
             key, env_key = jax.random.split(env_key)
             logits, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
-                states,
+                states.obs,
             )
             actions, log_probability, entropy = model_utilities.select_action(
                 logits,
                 env_key,
+            )
+            actions = jnp.expand_dims(
+                model_utilities.map_action(actions),
+                axis=-1,
             )
             next_states = step_fn(
                 states,
                 actions,
                 env_key,
             )
-            states_episode[step] = states
+            states_episode[step] = states.obs
             values_episode[step] = np.squeeze(values)
             log_probability_episode[step] = np.squeeze(log_probability)
             actions_episode[step] = np.squeeze(actions)
-            rewards_episode[step] = np.squeeze(rewards)
-            masks_episode[step] = np.array([not terminate for terminate in terminated])
+            rewards_episode[step] = np.squeeze(states.reward)
+            masks_episode[step] = np.array([not terminate for terminate in states.done])
             states = next_states
+            state_history.append(states)
 
         # No Gradient Calculation:
         _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
-                states,
+                states.obs,
             ),
         )
         values_episode[-1] = np.squeeze(values)
@@ -200,7 +207,14 @@ def main(argv=None):
             print(f'Reward threshold achieved at iteration {iteration}')
             break
 
-    envs_wrapper.close()
+        if iteration % 50 == 0:
+            visualize_batches = 4
+            visualizer.generate_batch_video(
+                env=env,
+                states=state_history,
+                batch_size=visualize_batches,
+                name=f'./videos/cartpole_simulation_{iteration}'
+            )
 
     if checkpoint_flag:
         CKPT_DIR = './checkpoints'
@@ -209,40 +223,6 @@ def main(argv=None):
             target=model_state,
             step=iteration,
         )
-
-    # Record Learned Policy:
-    env = gym.make(
-            'CartPole-v1',
-            render_mode="rgb_array",
-            max_episode_steps=max_episode_length,
-    )
-    env = gym.wrappers.RecordVideo(
-        env=env,
-        video_folder="./video",
-        episode_trigger=lambda x: x == 0,
-        name_prefix='pretrained-replay',
-        disable_logger=True,
-    )
-
-    states, info = env.reset(seed=key_seed)
-    terminated = 0
-    truncated = 0
-    while not (terminated or truncated):
-        key, subkey = jax.random.split(subkey)
-        logits, _ = model_utilities.forward_pass(
-            model_state.params,
-            model_state.apply_fn,
-            states,
-        )
-        actions, _, _ = model_utilities.select_action(
-            logits,
-            subkey,
-        )
-        states, _, terminated, truncated, _ = env.step(
-            action=np.array(actions),
-        )
-
-    env.close()
 
 
 if __name__ == '__main__':

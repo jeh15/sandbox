@@ -114,6 +114,7 @@ def main(argv=None):
             dtype=np.int16,
         )
         states, info = envs_wrapper.reset(seed=key_seed+iteration)
+        print(states.shape)
         for step in range(max_episode_length):
             key, subkey = jax.random.split(subkey)
             logits, values = model_utilities.forward_pass(
