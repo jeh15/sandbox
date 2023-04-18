@@ -48,15 +48,21 @@ def rollout(
             logits,
             env_key,
         )
-        actions = jnp.expand_dims(
+        mapped_actions = jnp.expand_dims(
             model_utilities.map_action(actions),
             axis=-1,
         )
+        # If Custom Auto Reset Wrapper is being used:
         next_states = step_fn(
             states,
-            actions,
+            mapped_actions,
             env_key,
         )
+        # Brax Default Auto Reset Wrapper
+        # next_states = step_fn(
+        #     states,
+        #     actions,
+        # )
         states_episode = states.obs
         values_episode = jnp.squeeze(values)
         log_probability_episode = jnp.squeeze(log_probability)

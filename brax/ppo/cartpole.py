@@ -12,7 +12,7 @@ import jax.numpy as jnp
 class CartPole(env.PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
-        filename = r'cartpole.xml'
+        filename = r'cartpole_ppo.xml'
         cwd_path = pathlib.PurePath(
             os.getcwd(),
         )
@@ -37,7 +37,7 @@ class CartPole(env.PipelineEnv):
     def reset(self, rng: jnp.ndarray) -> env.State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
-        eps = 0.01
+        eps = 0.05
         q = self.sys.init_q + jax.random.uniform(
             rng1,
             (self.sys.q_size(),),
@@ -47,8 +47,8 @@ class CartPole(env.PipelineEnv):
         qd = jax.random.uniform(
             rng2,
             (self.sys.qd_size(),),
-            minval=jnp.array([0, 0]),
-            maxval=jnp.array([0, 0]),
+            minval=jnp.array([-eps, -eps]),
+            maxval=jnp.array([eps, eps]),
         )
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)
@@ -71,7 +71,7 @@ class CartPole(env.PipelineEnv):
         terminal_state = jnp.array(
             [
                 jnp.where(x >= 2.4, 1.0, 0.0),
-                jnp.where(theta > 0.418, 1.0, 0.0),
+                jnp.where(theta > 0.2095, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)

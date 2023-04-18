@@ -12,6 +12,7 @@ from brax.envs.env import Env
 
 import model
 import model_utilities
+import train_utilities
 import cartpole
 import visualize_cartpole as visualizer
 import custom_wrapper
@@ -41,6 +42,7 @@ def create_environment(
     if batch_size:
         env = wrapper.VmapWrapper(env, batch_size)
     if auto_reset:
+        # env = wrapper.AutoResetWrapper(env)
         env = custom_wrapper.AutoResetWrapper(env)
 
     return env
@@ -72,7 +74,7 @@ def main(argv=None):
     checkpoint_flag = False
 
     # Setup Gym Environment:
-    num_envs = 256
+    num_envs = 4096
     max_episode_length = 500
     epsilon = 5.0
     reward_threshold = max_episode_length - epsilon
@@ -104,66 +106,20 @@ def main(argv=None):
     del initial_params
 
     # Test Environment:
-    key, reset_key, env_key = jax.random.split(initial_key, 3)
+    key, subkey = jax.random.split(initial_key)
     for iteration in range(training_length):
-        states_episode = np.zeros(
-            (max_episode_length, num_envs, 4),
-            dtype=np.float32,
+        key, subkey = jax.random.split(subkey)
+        carry, data = train_utilities.rollout(
+            model_state,
+            subkey,
+            reset_fn,
+            step_fn,
+            max_episode_length,
         )
-        values_episode = np.zeros(
-            (max_episode_length+1, num_envs),
-            dtype=np.float32,
-        )
-        log_probability_episode = np.zeros(
-            (max_episode_length, num_envs),
-            dtype=np.float32,
-        )
-        actions_episode = np.zeros(
-            (max_episode_length, num_envs),
-            dtype=np.float32,
-        )
-        rewards_episode = np.zeros(
-            (max_episode_length, num_envs),
-            dtype=np.float32,
-        )
-        masks_episode = np.zeros(
-            (max_episode_length, num_envs),
-            dtype=np.int16,
-        )
-        # Reset all environments:
-        key, reset_key = jax.random.split(reset_key)
-        states = reset_fn(reset_key)
-        state_history = []
-        state_history.append(states)
-        for step in range(max_episode_length):
-            # Provide new keys to auto-reset environments:
-            key, env_key = jax.random.split(env_key)
-            logits, values = model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                states.obs,
-            )
-            actions, log_probability, entropy = model_utilities.select_action(
-                logits,
-                env_key,
-            )
-            actions = jnp.expand_dims(
-                model_utilities.map_action(actions),
-                axis=-1,
-            )
-            next_states = step_fn(
-                states,
-                actions,
-                env_key,
-            )
-            states_episode[step] = states.obs
-            values_episode[step] = np.squeeze(values)
-            log_probability_episode[step] = np.squeeze(log_probability)
-            actions_episode[step] = np.squeeze(actions)
-            rewards_episode[step] = np.squeeze(states.reward)
-            masks_episode[step] = np.array([not terminate for terminate in states.done])
-            states = next_states
-            state_history.append(states)
+        # Unpack carry and data:
+        model_state, states, env_key = carry
+        states_episode, values_episode, log_probability_episode, \
+            actions_episode, rewards_episode, masks_episode = data
 
         # No Gradient Calculation:
         _, values = jax.lax.stop_gradient(
@@ -173,7 +129,12 @@ def main(argv=None):
                 states.obs,
             ),
         )
-        values_episode[-1] = np.squeeze(values)
+
+        # Calculate Advantage:
+        values_episode = jnp.concatenate(
+            [values_episode, jnp.expand_dims(np.squeeze(values), axis=0)],
+            axis=0,
+        )
         advantage_episode, returns_episode = jax.lax.stop_gradient(
             model_utilities.calculate_advantage(
                 rewards_episode,
@@ -207,22 +168,22 @@ def main(argv=None):
             print(f'Reward threshold achieved at iteration {iteration}')
             break
 
-        if iteration % 50 == 0:
-            visualize_batches = 4
-            visualizer.generate_batch_video(
-                env=env,
-                states=state_history,
-                batch_size=visualize_batches,
-                name=f'./videos/cartpole_simulation_{iteration}'
-            )
+        # if iteration % 50 == 0:
+        #     visualize_batches = 4
+        #     visualizer.generate_batch_video(
+        #         env=env,
+        #         states=state_history,
+        #         batch_size=visualize_batches,
+        #         name=f'./videos/cartpole_simulation_{iteration}'
+        #     )
 
-    if checkpoint_flag:
-        CKPT_DIR = './checkpoints'
-        checkpoints.save_checkpoint(
-            ckpt_dir=CKPT_DIR,
-            target=model_state,
-            step=iteration,
-        )
+    # if checkpoint_flag:
+    #     CKPT_DIR = './checkpoints'
+    #     checkpoints.save_checkpoint(
+    #         ckpt_dir=CKPT_DIR,
+    #         target=model_state,
+    #         step=iteration,
+    #     )
 
     # Replay Policy:
     env = create_environment(
@@ -231,11 +192,11 @@ def main(argv=None):
     )
     reset_fn = jax.jit(env.reset)
     step_fn = jax.jit(env.step)
-    states = reset_fn(reset_key)
+    states = reset_fn(subkey)
     state_history = []
     state_history.append(states)
     for step in range(max_episode_length):
-        key, env_key = jax.random.split(env_key)
+        key, subkey = jax.random.split(subkey)
         logits, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
@@ -246,7 +207,7 @@ def main(argv=None):
         actions, log_probability, entropy = jax.lax.stop_gradient(
             model_utilities.select_action(
                 logits,
-                env_key,
+                subkey,
             )
         )
         actions = jnp.expand_dims(
@@ -257,7 +218,7 @@ def main(argv=None):
             step_fn(
                 states,
                 actions,
-                env_key,
+                subkey,
             )
         )
         state_history.append(states)
