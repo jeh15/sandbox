@@ -6,7 +6,7 @@
 		<joint armature="0" damping="1"/>
 		<geom contype="0" friction="1 0.1 0.1" />
 		<tendon/>
-		<motor ctrlrange="-3 3"/>
+		<motor ctrlrange="-3.0 3.0"/>
 	</default>
 
 	<option gravity="0 0 -9.81" timestep="0.01" />
@@ -21,7 +21,7 @@
 
     <worldbody>
         <body name='cart' pos='0 0 0'>
-            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-1 1' damping='0.05'/>
+            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-2.4 2.4' damping='0.05'/>
             <geom name='cart_geom' type='box' pos='0 0 0' size='0.2 0.1 0.05'/>
             <body name='pole' pos='0 0 0'>
                 <joint name='revolute_joint' type='hinge' axis='0 1 0' damping='0.05'/>
@@ -31,7 +31,7 @@
     </worldbody>
 
     <actuator>
-        <motor name='slide' joint='slider' gear='100' ctrllimited='true' ctrlrange='-3 3'/>
+        <motor name='slide' joint='slider' gear='100' ctrllimited='true' ctrlrange='-3.0 3.0'/>
     </actuator>
 
 </mujoco>
