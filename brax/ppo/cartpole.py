@@ -52,7 +52,9 @@ class CartPole(env.PipelineEnv):
         )
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)
-        reward = -jnp.cos(obs[1])
+        # Reward Function:
+        # reward = -jnp.cos(obs[1])
+        reward = jnp.array(1, dtype=jnp.float32)
         done = jnp.array(0, dtype=jnp.float32)
         metrics = {}
 
@@ -62,7 +64,9 @@ class CartPole(env.PipelineEnv):
         """Run one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
         obs = self._get_obs(pipeline_state)
-        reward = -jnp.cos(obs[1])
+        # Reward Function:
+        # reward = -jnp.cos(obs[1])
+        reward = jnp.array(1, dtype=jnp.float32)
         # Two Reset Conditions: If |x| >= 1 or |theta| >= 0.2
         x = jnp.abs(obs[0])
         theta = jnp.abs(

@@ -30,7 +30,7 @@ def evaluate_action(logits, action):
 
 @jax.jit
 def map_action(action):
-    return jnp.where(action == 0, -0.25, 0.25)
+    return jnp.where(action == 0, -0.75, 0.75)
 
 
 @functools.partial(jax.jit, static_argnames=['episode_length'])

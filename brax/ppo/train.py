@@ -74,8 +74,8 @@ def main(argv=None):
 
     # Setup Gym Environment:
     num_envs = 512
-    max_episode_length = 505
-    epsilon = 5.0
+    max_episode_length = 500
+    epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
     training_length = 1000
     env = create_environment(

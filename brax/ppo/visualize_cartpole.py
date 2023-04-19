@@ -120,7 +120,7 @@ def generate_video(
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
     with writer_obj.saving(fig, name + ".mp4", 300):
-        for simulation_step in range(0, video_length, rate):
+        for simulation_step in tqdm(range(0, video_length, rate)):
             fig, writer_obj, (cart_patch, mass_patch) = _visualize(
                 fig=fig,
                 writer_obj=writer_obj,
