@@ -42,7 +42,6 @@ def create_environment(
     if batch_size:
         env = wrapper.VmapWrapper(env, batch_size)
     if auto_reset:
-        # env = wrapper.AutoResetWrapper(env)
         env = custom_wrapper.AutoResetWrapper(env)
 
     return env
@@ -74,9 +73,9 @@ def main(argv=None):
     checkpoint_flag = False
 
     # Setup Gym Environment:
-    num_envs = 4096
+    num_envs = 512
     max_episode_length = 500
-    epsilon = 5.0
+    epsilon = 1.0
     reward_threshold = max_episode_length - epsilon
     training_length = 1000
     env = create_environment(

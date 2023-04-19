@@ -24,7 +24,7 @@ def generate_batch_video(
     # Create plot handles for visualization:
     fig, axes = plt.subplots(nrows=layout, ncols=layout)
 
-    lb, ub = -1, 1
+    lb, ub = -2.4, 2.4
     plts = []
     for ax in axes.flatten():
         p, = ax.plot([], [], color='royalblue', zorder=10)
@@ -86,9 +86,13 @@ def generate_video(
     # Create plot handles for visualization:
     fig, ax = plt.subplots()
     pole, = ax.plot([], [], color='royalblue', zorder=10)
-    lb, ub = -1, 1
+    lb, ub = -2.4, 2.4
     ax.axis('equal')
     ax.set_xlim([lb, ub])
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    ax.set_xticks([])
+    ax.set_yticks([])
     ax.set_xlabel('X')
     ax.set_ylabel('Z')
     ax.set_title('Cart Pole Simulation:')
