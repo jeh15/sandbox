@@ -8,7 +8,7 @@ A repo that I use to try out things I find interesting.
 * [Theseus](https://github.com/facebookresearch/theseus)
 
 
-## How to run:
+# How to run:
 Some libraries that use JAX will unistall CUDA JAX (If installed via pip not sure about locally installed) and instead use CPU JAX.
 As a result pip install order matters...
 
@@ -25,14 +25,14 @@ sudo ./setup.sh
 ```
 
 ## Manual Method:
-# Create venv:
+### Create venv:
 ```
 python3 -m venv env
 /env/bin/pip install --upgrade pip
 source /env/bin/activate
 ```
 
-# Libraries that need to go before CUDA JAX install:
+### Libraries that need to go before CUDA JAX install:
 ```
 pip install brax
 ```
@@ -42,7 +42,7 @@ pip install brax
 pip install git+https://github.com/jeh15/distrax.git
 ```
 
-# Rest of the dependencies:
+### Rest of the dependencies:
 ```
 # Installs the wheel compatible with CUDA 12 and cuDNN 8.8 or newer.
 # Note: wheels only available on linux.
