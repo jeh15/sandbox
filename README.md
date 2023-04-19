@@ -16,7 +16,9 @@ To make this easy, setup.sh provides an interactive CLI to install most dependen
 
 ## CLI Setup Method:
 The CLI method depends on Charm's `gum` library. 
+
 `setup.sh` installs `gum` to your `/tmp/` directory.
+
 
 ```
 git clone https://github.com/jeh15/sandbox
