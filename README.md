@@ -14,6 +14,8 @@ As a result pip install order matters...
 
 To make this easy, setup.sh provides an interactive CLI to install most dependencies.
 
+*Note: some of the wheels are only available on linux.*
+
 ## CLI Setup Method:
 The CLI method depends on Charm's `gum` library. 
 
