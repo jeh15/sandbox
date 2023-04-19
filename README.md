@@ -17,7 +17,7 @@ To make this easy, setup.sh provides an interactive CLI to install most dependen
 *Note: some of the wheels are only available on linux.*
 
 ## CLI Setup Method:
-The CLI method depends on Charm's `gum` library (`setup.sh` installs `gum` to your `/tmp` directory)
+The CLI method depends on Charm's `gum` library (`setup.sh` installs `gum` to your `/tmp` directory).
 
 
 ```
