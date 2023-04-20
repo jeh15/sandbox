@@ -7,7 +7,7 @@ from matplotlib.animation import FFMpegWriter
 from matplotlib.patches import Circle, Rectangle
 from tqdm import tqdm
 
-import quaternion_math as quat
+import jax_quaternion as jqt
 
 
 def generate_batch_video(
@@ -27,7 +27,7 @@ def generate_batch_video(
     lb, ub = -2.4, 2.4
     plts = []
     for ax in axes.flatten():
-        p, = ax.plot([], [], color='royalblue', zorder=10)
+        p, = ax.plot([], [], color='royalblue', linewidth=0.75, zorder=10)
         plts.append(p)
         ax.axis('equal')
         ax.set_xlim([lb, ub])
@@ -58,7 +58,7 @@ def generate_batch_video(
     for ax, cart_patch, mass_patch in zip(axes.flatten(), cart_patches, mass_patches):
         ax.add_patch(cart_patch)
         ax.add_patch(mass_patch)
-        ax.hlines(0, lb, ub, colors='black', linestyles='--', zorder=0)
+        ax.hlines(0, lb, ub, colors='black', linewidth=0.75, linestyles='--', zorder=0)
 
     # Create video writer:
     fps = 24
@@ -136,7 +136,7 @@ def _visualize(fig, writer_obj, plt, patch, state, width, height):
     # Update Pole: (x, z) position
     q = state.pipeline_state.x.rot[-1]
     v = np.array([0, 0, -0.2], dtype=np.float32)
-    end_effector = quat.rotate(q=q, v=v) + state.pipeline_state.x.pos[-1]
+    end_effector = jqt.rotate(q=q, v=v) + state.pipeline_state.x.pos[-1]
     plt.set_data(
         [state.pipeline_state.x.pos[0][0], end_effector[0]],
         [state.pipeline_state.x.pos[0][-1], end_effector[-1]],
@@ -164,7 +164,7 @@ def _visualize_batch(fig, writer_obj, plts, patches, state, width, height):
         q = state.pipeline_state.x.rot[state_iter][-1]
         v = np.array([0, 0, -0.2], dtype=np.float32)
         end_effector = (
-            quat.rotate(q=q, v=v) + state.pipeline_state.x.pos[state_iter][-1]
+            jqt.rotate(q=q, v=v) + state.pipeline_state.x.pos[state_iter][-1]
         )
         p.set_data(
             [state.pipeline_state.x.pos[state_iter][0][0], end_effector[0]],

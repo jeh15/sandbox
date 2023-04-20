@@ -70,14 +70,13 @@ def create_train_state(module, params, learning_rate):
 def main(argv=None):
     # RNG Key:
     key_seed = 42
-    checkpoint_flag = False
 
     # Setup Gym Environment:
     num_envs = 512
     max_episode_length = 500
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
-    training_length = 1000
+    training_length = 200
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -167,34 +166,10 @@ def main(argv=None):
             print(f'Reward threshold achieved at iteration {iteration}')
             break
 
-        # if iteration % 50 == 0:
-        #     visualize_batches = 4
-        #     visualizer.generate_batch_video(
-        #         env=env,
-        #         states=state_history,
-        #         batch_size=visualize_batches,
-        #         name=f'./videos/cartpole_simulation_{iteration}'
-        #     )
-
-    # if checkpoint_flag:
-    #     CKPT_DIR = './checkpoints'
-    #     checkpoints.save_checkpoint(
-    #         ckpt_dir=CKPT_DIR,
-    #         target=model_state,
-    #         step=iteration,
-    #     )
-
-    # Replay Policy:
-    env = create_environment(
-        episode_length=max_episode_length,
-        action_repeat=1,
-    )
-    reset_fn = jax.jit(env.reset)
-    step_fn = jax.jit(env.step)
-    states = reset_fn(subkey)
     state_history = []
+    states = reset_fn(subkey)
     state_history.append(states)
-    for step in range(int(max_episode_length - epsilon)):
+    for iteration in range(max_episode_length):
         key, subkey = jax.random.split(subkey)
         logits, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
@@ -203,29 +178,31 @@ def main(argv=None):
                 states.obs,
             )
         )
-        actions, log_probability, entropy = jax.lax.stop_gradient(
+        actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
                 logits,
-                subkey,
+                env_key,
             )
         )
-        actions = jnp.expand_dims(
+        mapped_actions = jnp.expand_dims(
             model_utilities.map_action(actions),
             axis=-1,
         )
         states = jax.lax.stop_gradient(
             step_fn(
                 states,
-                actions,
-                subkey,
+                mapped_actions,
+                env_key,
             )
         )
         state_history.append(states)
 
-    visualizer.generate_video(
+    visualize_batches = 25
+    visualizer.generate_batch_video(
         env=env,
         states=state_history,
-        name=f'./videos/cartpole_learned_policy'
+        batch_size=visualize_batches,
+        name=f'./videos/cartpole_simulation_{iteration}'
     )
 
 

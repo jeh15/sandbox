@@ -78,6 +78,11 @@ class CartPole(env.PipelineEnv):
                 jnp.where(theta > 0.2095, 1.0, 0.0),
             ],
         )
+        # terminal_state = jnp.array(
+        #     [
+        #         jnp.where(x >= 2.4, 1.0, 0.0),
+        #     ],
+        # )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
         return state.replace(
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
