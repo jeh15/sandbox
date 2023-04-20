@@ -33,7 +33,7 @@
     </worldbody>
 
     <actuator>
-        <motor name='slide' joint='slider' gear='100' ctrllimited='true' ctrlrange='-10 10'/>
+        <motor name='slide' joint='slider' gear='100 0 0 0 0 0' ctrllimited='true' ctrlrange='-10 10'/>
     </actuator>
 
 </mujoco>
