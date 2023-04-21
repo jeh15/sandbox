@@ -9,7 +9,7 @@ A repo that I use to try out things I find interesting.
 
 
 # How to run:
-Some libraries that use JAX will unistall CUDA JAX (If installed via pip not sure about locally installed) and instead use CPU JAX.
+Some libraries that use JAX will uninstall CUDA JAX (If installed via pip not sure about locally installed) and instead use CPU JAX.
 As a result pip install order matters...
 
 To make this easy, setup.sh provides an interactive CLI to install most dependencies.
