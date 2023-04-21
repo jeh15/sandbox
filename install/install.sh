@@ -251,7 +251,7 @@ windows-amd64)
     original_version="latest"
   
     # version such as "master"
-    version="v0.10.0"
+    version="v0.9.0"
     
     tmpdir="$(mktmpdir)"
 
