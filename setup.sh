@@ -68,6 +68,8 @@ $gum spin -s line --title "Installing Optax..." -- sh -c 'env/bin/pip install op
 echo -e "$($gum style --italic --foreground 99 '    > Installed Optax')\n"
 $gum spin -s line --title "Installing matplotlib..." -- sh -c 'env/bin/pip install matplotlib'
 echo -e "$($gum style --italic --foreground 99 '    > Installed matplotlib')\n"
+$gum spin -s line --title "Installing tqdm..." -- sh -c 'env/bin/pip install tqdm'
+echo -e "$($gum style --italic --foreground 99 '    > Installed tqdm')\n"
 $gum spin -s line --title "Installing absl-py..." -- sh -c 'env/bin/pip install absl-py'
 echo -e "$($gum style --italic --foreground 99 '    > Installed absl-py')\n"
 
