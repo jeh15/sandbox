@@ -157,7 +157,7 @@ def main(argv=None):
 
         average_reward = np.mean(
             np.sum(
-                (rewards_episode * masks_episode),
+                (rewards_episode),
                 axis=0,
             ),
         )
@@ -179,7 +179,7 @@ def main(argv=None):
     state_history = []
     states = reset_fn(subkey)
     state_history.append(states)
-    for iteration in range(max_episode_length):
+    for _ in range(max_episode_length):
         key, subkey = jax.random.split(subkey)
         mean, std, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
