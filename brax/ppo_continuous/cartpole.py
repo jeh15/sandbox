@@ -66,7 +66,7 @@ class CartPole(env.PipelineEnv):
         obs = self._get_obs(pipeline_state)
         # Reward Function:
         # reward = -jnp.cos(obs[1])
-        reward = jnp.array(1, dtype=jnp.float32)
+        # reward = jnp.array(1, dtype=jnp.float32)
         # Two Reset Conditions: If |x| >= 1 or |theta| >= 0.2
         x = jnp.abs(obs[0])
         theta = jnp.abs(
@@ -79,6 +79,7 @@ class CartPole(env.PipelineEnv):
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
+        reward = jnp.where(done == 1.0, -1.0, 1.0)
         return state.replace(
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
         )

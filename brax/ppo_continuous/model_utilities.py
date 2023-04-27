@@ -7,13 +7,15 @@ import distrax
 
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def forward_pass(model_params, apply_fn, x):
-    mean, values = apply_fn({'params': model_params}, x)
-    std = jnp.exp(mean)
+    mean, std, values = apply_fn({'params': model_params}, x)
     return mean, std, values
 
 
 @jax.jit
 def select_action(mean, std, key):
+    # probability_distribution = distrax.ClippedNormal(
+    #     loc=mean, scale=std, minimum=-1.0, maximum=1.0,
+    # )
     probability_distribution = distrax.Normal(loc=mean, scale=std)
     actions = probability_distribution.sample(seed=key)
     log_probability = probability_distribution.log_prob(actions)
@@ -23,6 +25,9 @@ def select_action(mean, std, key):
 
 @jax.jit
 def evaluate_action(mean, std, action):
+    # probability_distribution = distrax.ClippedNormal(
+    #     loc=mean, scale=std, minimum=-1.0, maximum=1.0,
+    # )
     probability_distribution = distrax.Normal(loc=mean, scale=std)
     log_probability = probability_distribution.log_prob(action)
     entropy = probability_distribution.entropy()
@@ -62,7 +67,7 @@ def loss_function(
     # Forward Pass Network:
     mean, std, values = forward_pass(model_params, apply_fn, states)
     mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
-    
+
     # Replay actions:
     log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
 
@@ -83,7 +88,7 @@ def loss_function(
 
     # Value Loss:
     value_loss = value_coeff * jnp.mean(
-        jnp.square(jnp.squeeze(values) - returns),
+        jnp.square(values - returns),
     )
 
     # Entropy Loss:

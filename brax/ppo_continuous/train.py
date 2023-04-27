@@ -5,7 +5,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import optax
-from flax.training import train_state, checkpoints
+from flax.training import train_state
 from brax.envs import wrapper
 from brax.envs.env import Env
 
@@ -71,12 +71,15 @@ def main(argv=None):
     # RNG Key:
     key_seed = 42
 
+    best_reward = 0.0
+    best_iteration = 0
+
     # Setup Gym Environment:
-    num_envs = 4096
+    num_envs = 64
     max_episode_length = 500
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
-    training_length = 200
+    training_length = 6000
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -95,7 +98,7 @@ def main(argv=None):
         key=initial_key,
     )
     # Create a train state:
-    learning_rate = 0.001
+    learning_rate = 0.0001
     model_state = create_train_state(
         module=network,
         params=initial_params,
@@ -159,12 +162,19 @@ def main(argv=None):
             ),
         )
 
+        if average_reward >= best_reward:
+            best_reward = average_reward
+            best_iteration = iteration
+
         if iteration % 5 == 0:
             print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
 
         if average_reward >= reward_threshold:
             print(f'Reward threshold achieved at iteration {iteration}')
+            print(f'Average Reward: {average_reward} \t Loss: {loss}')
             break
+
+    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
     state_history = []
     states = reset_fn(subkey)
