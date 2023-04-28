@@ -37,18 +37,21 @@ class CartPole(env.PipelineEnv):
     def reset(self, rng: jnp.ndarray) -> env.State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
-        eps = 0.05
+        x_eps = 1.0
+        dx_eps = 0.1
+        th_eps = 0.1
+        dth_eps = 0.05
         q = self.sys.init_q + jax.random.uniform(
             rng1,
             (self.sys.q_size(),),
-            minval=jnp.array([-eps, jnp.pi - eps]),
-            maxval=jnp.array([eps, jnp.pi + eps]),
+            minval=jnp.array([-x_eps, jnp.pi - th_eps]),
+            maxval=jnp.array([x_eps, jnp.pi + th_eps]),
         )
         qd = jax.random.uniform(
             rng2,
             (self.sys.qd_size(),),
-            minval=jnp.array([-eps, -eps]),
-            maxval=jnp.array([eps, eps]),
+            minval=jnp.array([-dx_eps, -dth_eps]),
+            maxval=jnp.array([dx_eps, dth_eps]),
         )
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)

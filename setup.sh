@@ -53,7 +53,7 @@ if [[ "$ACTIONS" == "$GPU" ]]
 then
     if [[ "$CUDA_CHOICE" == "$CUDA11" ]]
     then
-        $gum spin -s line --title "Installing CUDA 11 JAX..." -- sh -c 'env/bin/pip pip install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html'
+        $gum spin -s line --title "Installing CUDA 11 JAX..." -- sh -c 'env/bin/pip install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html'
         echo -e "$($gum style --italic --foreground 99 '    > Installed CUDA 11 JAX')\n"
     else
         $gum spin -s line --title "Installing CUDA 12 JAX..." -- sh -c 'env/bin/pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html'

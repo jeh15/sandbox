@@ -77,7 +77,7 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 64
+    num_envs = 4096
     max_episode_length = 500
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
@@ -100,7 +100,7 @@ def main(argv=None):
         key=initial_key,
     )
     # Create a train state:
-    learning_rate = 0.0001
+    learning_rate = 0.001
     model_state = create_train_state(
         module=network,
         params=initial_params,
@@ -111,7 +111,6 @@ def main(argv=None):
     # Test Environment:
     key, subkey = jax.random.split(initial_key)
     for iteration in range(training_length):
-        start_time = time.time()
         key, subkey = jax.random.split(subkey)
         model_state, loss, carry, data = train_utilities.rollout(
             model_state,
@@ -120,9 +119,6 @@ def main(argv=None):
             step_fn,
             max_episode_length,
         )
-
-        elapsed_time = time.time() - start_time
-        print(f'Rollout Time: {elapsed_time}')
 
         # Unpack data:
         states_episode, values_episode, log_probability_episode, \

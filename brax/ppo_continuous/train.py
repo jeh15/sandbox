@@ -75,7 +75,7 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 64
+    num_envs = 4096
     max_episode_length = 500
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
