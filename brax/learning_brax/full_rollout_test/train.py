@@ -21,6 +21,7 @@ import time
 
 
 def create_environment(
+    environment: callable,
     episode_length: int = 1000,
     action_repeat: int = 1,
     auto_reset: bool = True,
@@ -29,6 +30,7 @@ def create_environment(
 ) -> Env:
     """Creates an environment from the registry.
     Args:
+        environment: brax environment pipeline object
         episode_length: length of episode
         action_repeat: how many repeated actions to take per environment step
         auto_reset: whether to auto reset the environment after an episode is done
@@ -37,7 +39,7 @@ def create_environment(
     Returns:
         env: an environment
     """
-    env = cartpole.CartPole(**kwargs)
+    env = environment(**kwargs)
 
     if episode_length is not None:
         env = wrapper.EpisodeWrapper(env, episode_length, action_repeat)
@@ -57,11 +59,20 @@ def init_params(module, input_size, key):
     return params
 
 
-def create_train_state(module, params, learning_rate):
-    """Creates an initial `TrainState`."""
+def create_optimizer():
+    """Creates a custom optimizer."""
     tx = optax.adam(
-        learning_rate=learning_rate,
+        learning_rate=optax.linear_schedule(
+        init_value=1e-3,
+        end_value=1e-4,
+        transition_steps=100,
+        transition_begin=300,
+        ),
     )
+    return tx
+
+def create_train_state(module, params, tx):
+    """Creates an initial `TrainState`."""
     return train_state.TrainState.create(
         apply_fn=module.apply,
         params=params,
@@ -77,40 +88,62 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 4096
+    num_envs = 256
     max_episode_length = 500
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
     training_length = 6000
-    env = create_environment(
+    env_hv = create_environment(
+        environment=cartpole.CartPoleHV,
         episode_length=max_episode_length,
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
     )
-    step_fn = jax.jit(env.step)
-    reset_fn = jax.jit(env.reset)
+    step_fn_hv = jax.jit(env_hv.step)
+    reset_fn_hv = jax.jit(env_hv.reset)
+    env_lv = create_environment(
+        environment=cartpole.CartPoleLV,
+        episode_length=max_episode_length,
+        action_repeat=1,
+        auto_reset=True,
+        batch_size=num_envs,
+    )
+    step_fn_lv = jax.jit(env_lv.step)
+    reset_fn_lv = jax.jit(env_lv.reset)
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
-    network = model.ActorCriticNetwork(action_space=env.num_actions)
+    network = model.ActorCriticNetwork(action_space=env_hv.num_actions)
     initial_params = init_params(
         module=network,
-        input_size=env.observation_size,
+        input_size=env_hv.observation_size,
         key=initial_key,
     )
     # Create a train state:
-    learning_rate = 0.001
+    tx = create_optimizer()
     model_state = create_train_state(
         module=network,
         params=initial_params,
-        learning_rate=learning_rate,
+        tx=tx,
     )
     del initial_params
 
-    # Test Environment:
+    # Environment Parameters:
+    iteration_schedule = 300
+    step_fn = step_fn_hv
+    reset_fn = reset_fn_hv
+
+    # Training Loop:
+    average_reward = 0.0
+    convergence_counter = 0
     key, subkey = jax.random.split(initial_key)
     for iteration in range(training_length):
+        # After iteration schedule switch hyperparameters:
+        if iteration == iteration_schedule:
+            step_fn = step_fn_lv
+            reset_fn = reset_fn_lv
+
         key, subkey = jax.random.split(subkey)
         model_state, loss, carry, data = train_utilities.rollout(
             model_state,
@@ -124,6 +157,7 @@ def main(argv=None):
         states_episode, values_episode, log_probability_episode, \
             actions_episode, rewards_episode, masks_episode = data
 
+        previous_reward = average_reward
         average_reward = np.mean(
             np.sum(
                 (rewards_episode),
@@ -139,11 +173,19 @@ def main(argv=None):
             print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
 
         if average_reward >= reward_threshold:
-            print(f'Reward threshold achieved at iteration {iteration}')
-            print(f'Average Reward: {average_reward} \t Loss: {loss}')
-            break
+            if average_reward == previous_reward:
+                convergence_counter += 1
+            else:
+                convergence_counter = 0
 
-    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
+            if convergence_counter == 5:
+                print(f'Reward threshold achieved at iteration {iteration}')
+                print(f'Average Reward: {average_reward} \t Loss: {loss}')
+                break
+
+    if convergence_counter != 5:
+        print(f'The algorithm did not converge to a solution.')
+        print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
     state_history = []
     states = reset_fn(subkey)
@@ -161,21 +203,21 @@ def main(argv=None):
             model_utilities.select_action(
                 mean,
                 std,
-                env_key,
+                subkey,
             )
         )
         states = jax.lax.stop_gradient(
             step_fn(
                 states,
                 actions,
-                env_key,
+                subkey,
             )
         )
         state_history.append(states)
 
     visualize_batches = 25
     visualizer.generate_batch_video(
-        env=env,
+        env=env_lv,
         states=state_history,
         batch_size=visualize_batches,
         name=f'./videos/cartpole_simulation_{iteration}'

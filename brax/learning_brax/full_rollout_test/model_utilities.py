@@ -13,9 +13,6 @@ def forward_pass(model_params, apply_fn, x):
 
 @jax.jit
 def select_action(mean, std, key):
-    # probability_distribution = distrax.ClippedNormal(
-    #     loc=mean, scale=std, minimum=-1.0, maximum=1.0,
-    # )
     probability_distribution = distrax.Normal(loc=mean, scale=std)
     actions = probability_distribution.sample(seed=key)
     log_probability = probability_distribution.log_prob(actions)
@@ -25,9 +22,6 @@ def select_action(mean, std, key):
 
 @jax.jit
 def evaluate_action(mean, std, action):
-    # probability_distribution = distrax.ClippedNormal(
-    #     loc=mean, scale=std, minimum=-1.0, maximum=1.0,
-    # )
     probability_distribution = distrax.Normal(loc=mean, scale=std)
     log_probability = probability_distribution.log_prob(action)
     entropy = probability_distribution.entropy()
