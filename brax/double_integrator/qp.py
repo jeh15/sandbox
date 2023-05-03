@@ -3,9 +3,12 @@ from typing import Callable
 
 from absl import app
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from jaxopt import BoxOSQP
+
+import matplotlib.pyplot as plt
 
 
 @partial(jax.jit, static_argnames=['dt'])
@@ -238,8 +241,8 @@ def qp_layer(
 
 def main(argv=None) -> None:
     # Optimization Parameters: (These really matter for solve convergence)
-    time_horizon = 1.0
-    nodes = 11
+    time_horizon = 5.0
+    nodes = 51
 
     # Dummy Inputs:
     initial_conditions = jnp.zeros(
@@ -264,8 +267,19 @@ def main(argv=None) -> None:
         nodes,
     )
 
-    print(state.status)
-
+    print(f'Optimization Status: {state.status}')
+    
+    # Plot Solution:
+    fig, axs = plt.subplots(2, 1)
+    time_vector = np.linspace(0, time_horizon, nodes)
+    distance_plt, = axs[0].plot(time_vector, sol.primal[0][:nodes], label='Distance')
+    force_plt, = axs[1].plot(time_vector, sol.primal[0][-nodes:], label='Control Input')
+    axs[0].axis('equal')
+    axs[1].axis('equal')
+    axs[0].set_ylabel('Distance (m)')
+    axs[1].set_ylabel('Force (N)')
+    axs[1].set_xlabel('Time (s)')
+    plt.savefig("qp_sol.png")
 
 if __name__ == '__main__':
     app.run(main)
