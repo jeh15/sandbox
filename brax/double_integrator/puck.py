@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 
 
-class CartPole(env.PipelineEnv):
+class Puck(env.PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
         filename = r'puck.xml'
@@ -68,11 +68,11 @@ class CartPole(env.PipelineEnv):
         # Reward Function:
         target_position = 1.0
         error = -(jnp.abs(obs[0] - target_position))
-        # Reset Conditions: If |x| >= 2.4
+        # Reset Conditions: If |x| >= 2.0
         x = jnp.abs(obs[0])
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 2.4, 1.0, 0.0),
+                jnp.where(x >= 2.0, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)

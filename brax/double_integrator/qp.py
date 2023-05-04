@@ -43,13 +43,13 @@ def equality_constraints(
 
     # 1. Initial Condition Constraints:
     initial_condition = jnp.asarray([
-        x[0] - initial_conditions[0],
-        dx[0] - initial_conditions[1],
+        x[0] - initial_conditions[..., 0],
+        dx[0] - initial_conditions[..., 1],
     ], dtype=float)
 
     # 2. Collocation Constraints:
     # Model Parameters: (Match Brax model future make these learnable)
-    friction = 0.1
+    friction = 0.05
     mass = 1.0
 
     ddx = (ux - friction * dx) / mass
@@ -238,7 +238,11 @@ def qp_layer(
         params_ineq=(lb, ub),
     )
 
-    return sol, state
+    pos = sol.primal[0][:nodes]
+    vel = sol.primal[0][nodes:-nodes]
+    acc = sol.primal[0][-nodes:]
+    # return sol, state
+    return pos, vel, acc
 
 
 # Test JAXopt OSQP:
@@ -250,8 +254,8 @@ def main(argv=None) -> None:
     # Optimization Parameters: (These really matter for solve convergence)
     time_horizon = 5.0
     nodes = 51
-    num_optimizations = 1024
-    visualize_batch = 4
+    num_optimizations = 128
+    visualize_batch = 5
 
     # Dummy Inputs:
     initial_condition = []
@@ -289,18 +293,18 @@ def main(argv=None) -> None:
     vqp_layer = jax.vmap(
         vqp,
         in_axes=(0, 0),
-        out_axes=(0, 0),
+        out_axes=(0, 0, 0),
     )
 
     # Warmup:
-    _, _ = vqp_layer(
+    _, _, _ = vqp_layer(
         initial_condition,
         target_position,
     )
 
     # Solve QP:
     start_time = time.time()
-    sol, state = vqp_layer(
+    pos, vel, acc = vqp_layer(
         initial_condition,
         target_position,
     )
@@ -308,7 +312,7 @@ def main(argv=None) -> None:
     print(f'Elapsed Time: {elapsed_time:.3f} seconds')
 
     # Print Status:
-    print(f'Optimization Solved: {(state.status).any()}')
+    # print(f'Optimization Solved: {(state.status).any()}')
 
     # Plot Solution:
     fig, axes = plt.subplots(nrows=visualize_batch, ncols=2)
@@ -321,11 +325,11 @@ def main(argv=None) -> None:
     iteration = 0
     for ax in axes:
         x_plt, = ax[0].plot(
-            time_vector, sol.primal[0][iteration][:nodes],
+            time_vector, pos[iteration],
             color='royalblue', linewidth=0.75,
         )
         u_plt, = ax[1].plot(
-            time_vector, sol.primal[0][iteration][-nodes:],
+            time_vector, acc[iteration],
             color='orange', linewidth=0.75,
         )
         ax[0].hlines(

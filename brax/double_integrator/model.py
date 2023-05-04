@@ -48,9 +48,9 @@ class ActorCriticNetwork(nn.Module):
             name='layer_7',
             dtype=dtype,
         )
-        self.dense_8 = nn.Dense(
-            features=features,
-            name='layer_8',
+        self.target_prediction = nn.Dense(
+            features=1,
+            name='target_prediction_layer',
             dtype=dtype,
         )
         self.mean_layer = nn.Dense(
@@ -86,29 +86,30 @@ class ActorCriticNetwork(nn.Module):
         self.osqp_layer = jax.vmap(
             qp_func,
             in_axes=(0, 0),
-            out_axes=(0, 0),
+            out_axes=(0, 0, 0),
         )
 
+    # Embedded MPC Actor-Critic Network:
     def model(self, x):
         range = 2.0
+        # Initial Conditions:
+        initial_conditions = x
         # Shared Layers:
         x = self.dense_1(x)
         x = nn.tanh(x)
         x = self.dense_2(x)
         x = nn.tanh(x)
         # Policy Layer:
-        y = self.dense_3(x)
+        target_position = self.target_prediction(x)
+        pos, vel, acc = self.osqp_layer(initial_conditions, target_position)
+        y = self.dense_4(acc)
         y = nn.tanh(y)
-        y = self.dense_4(y)
-        y = nn.tanh(y)
-        z = self.dense_5(x)
-        z = nn.tanh(z)
-        z = self.dense_6(z)
+        z = self.dense_5(acc)
         z = nn.tanh(z)
         # Value Layer
-        w = self.dense_7(x)
+        w = self.dense_6(x)
         w = nn.tanh(w)
-        w = self.dense_8(w)
+        w = self.dense_7(w)
         w = nn.tanh(w)
         # Output Layer:
         mean = self.mean_layer(y)
