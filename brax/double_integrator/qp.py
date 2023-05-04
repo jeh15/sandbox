@@ -8,7 +8,9 @@ import jax
 import jax.numpy as jnp
 from jaxopt import BoxOSQP
 
+import time
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
 @partial(jax.jit, static_argnames=['dt'])
@@ -203,11 +205,11 @@ def qp_layer(
     A = jnp.vstack(
         [A_eq, A_ineq],
     )
-    l = jnp.concatenate(
+    lb = jnp.concatenate(
         [b_eq, b_ineq_lb],
         axis=0,
     )
-    u = jnp.concatenate(
+    ub = jnp.concatenate(
         [b_eq, b_ineq_ub],
         axis=0,
     )
@@ -233,23 +235,46 @@ def qp_layer(
     sol, state = qp.run(
         params_obj=(H, f),
         params_eq=A,
-        params_ineq=(l, u),
+        params_ineq=(lb, ub),
     )
 
     return sol, state
 
 
+# Test JAXopt OSQP:
 def main(argv=None) -> None:
+    # Random Key:
+    key = jax.random.PRNGKey(42)
+    key, subkey = jax.random.split(key)
+
     # Optimization Parameters: (These really matter for solve convergence)
     time_horizon = 5.0
     nodes = 51
+    num_optimizations = 1024
+    visualize_batch = 4
 
     # Dummy Inputs:
-    initial_conditions = jnp.zeros(
-        (2,),
-        dtype=jnp.float32,
-    )
-    target_position = 1.0
+    initial_condition = []
+    target_position = []
+    for _ in range(num_optimizations):
+        key, subkey = jax.random.split(subkey)
+        initial_condition.append(
+            jax.random.uniform(
+                key=subkey,
+                shape=(2,),
+                dtype=jnp.float32,
+            ),
+        )
+        target_position.append(
+            jax.random.uniform(
+                key=subkey,
+                shape=(1,),
+                dtype=jnp.float32,
+            ),
+        )
+
+    initial_condition = jnp.asarray(initial_condition)
+    target_position = jnp.asarray(target_position)
 
     # Preprocess QP:
     equaility_functions, inequality_functions, objective_functions = qp_preprocess(
@@ -257,29 +282,72 @@ def main(argv=None) -> None:
         nodes,
     )
 
-    # Solve QP:
-    sol, state = qp_layer(
-        initial_conditions,
-        target_position,
-        equaility_functions,
-        inequality_functions,
-        objective_functions,
-        nodes,
+    # Isolate Function w/ Lambda Function:
+    vqp = lambda x, y: qp_layer(
+        x, y, equaility_functions, inequality_functions, objective_functions, nodes,
+    )
+    vqp_layer = jax.vmap(
+        vqp,
+        in_axes=(0, 0),
+        out_axes=(0, 0),
     )
 
-    print(f'Optimization Status: {state.status}')
-    
+    # Warmup:
+    _, _ = vqp_layer(
+        initial_condition,
+        target_position,
+    )
+
+    # Solve QP:
+    start_time = time.time()
+    sol, state = vqp_layer(
+        initial_condition,
+        target_position,
+    )
+    elapsed_time = time.time() - start_time
+    print(f'Elapsed Time: {elapsed_time:.3f} seconds')
+
+    # Print Status:
+    print(f'Optimization Solved: {(state.status).any()}')
+
     # Plot Solution:
-    fig, axs = plt.subplots(2, 1)
+    fig, axes = plt.subplots(nrows=visualize_batch, ncols=2)
+    plt.locator_params(nbins=2)
+
     time_vector = np.linspace(0, time_horizon, nodes)
-    distance_plt, = axs[0].plot(time_vector, sol.primal[0][:nodes], label='Distance')
-    force_plt, = axs[1].plot(time_vector, sol.primal[0][-nodes:], label='Control Input')
-    axs[0].axis('equal')
-    axs[1].axis('equal')
-    axs[0].set_ylabel('Distance (m)')
-    axs[1].set_ylabel('Force (N)')
-    axs[1].set_xlabel('Time (s)')
+
+    x_plts = []
+    u_plts = []
+    iteration = 0
+    for ax in axes:
+        x_plt, = ax[0].plot(
+            time_vector, sol.primal[0][iteration][:nodes],
+            color='royalblue', linewidth=0.75,
+        )
+        u_plt, = ax[1].plot(
+            time_vector, sol.primal[0][iteration][-nodes:],
+            color='orange', linewidth=0.75,
+        )
+        ax[0].hlines(
+            target_position[iteration], 0, time_horizon,
+            colors='lightcoral', linewidth=0.75, linestyles='--', zorder=0,
+        )
+        ax[0].set_xlim([0, time_horizon])
+        ax[1].set_xlim([0, time_horizon])
+        ax[0].axis('equal')
+        ax[1].axis('equal')
+        ax[0].yaxis.set_major_locator(ticker.MaxNLocator(2))
+        ax[1].yaxis.set_major_locator(ticker.MaxNLocator(2))
+        if iteration < (visualize_batch - 1):
+            ax[0].set_xticklabels([])
+            ax[0].set_xticks([])
+            ax[1].set_xticklabels([])
+            ax[1].set_xticks([])
+        x_plts.append(x_plt)
+        u_plts.append(u_plt)
+        iteration += 1
     plt.savefig("qp_sol.png")
+
 
 if __name__ == '__main__':
     app.run(main)
