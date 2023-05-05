@@ -2,13 +2,20 @@ import functools
 
 import jax
 import jax.numpy as jnp
+from flax import linen as nn
 import distrax
+
+
+# @functools.partial(jax.jit, static_argnames=['apply_fn'])
+# def forward_pass(model_params, apply_fn, x):
+#     mean, std, values, status = apply_fn,({'params': model_params}, x)
+#     return mean, std, values, status
 
 
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def forward_pass(model_params, apply_fn, x):
-    mean, std, values = apply_fn({'params': model_params}, x)
-    return mean, std, values
+    mean, std, values, status = jax.vmap(apply_fn, in_axes=(None, 0), out_axes=(0, 0, 0, 0))({'params': model_params}, x)
+    return mean, std, values, status
 
 
 @jax.jit
@@ -59,7 +66,7 @@ def loss_function(
     clip_coeff = 0.2
 
     # Forward Pass Network:
-    mean, std, values = forward_pass(model_params, apply_fn, states)
+    mean, std, values, status = forward_pass(model_params, apply_fn, states)
     mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
 
     # Replay actions:

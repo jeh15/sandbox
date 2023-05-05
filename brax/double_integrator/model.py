@@ -83,11 +83,12 @@ class ActorCriticNetwork(nn.Module):
             objective_functions,
             self.nodes,
         )
-        self.osqp_layer = jax.vmap(
-            qp_func,
-            in_axes=(0, 0),
-            out_axes=(0, 0, 0),
-        )
+        # self.osqp_layer = jax.vmap(
+        #     qp_func,
+        #     in_axes=(0, 0),
+        #     out_axes=(0, 0, 0, 0),
+        # )
+        self.osqp_layer = qp_func
 
     # Embedded MPC Actor-Critic Network:
     def model(self, x):
@@ -100,8 +101,9 @@ class ActorCriticNetwork(nn.Module):
         x = self.dense_2(x)
         x = nn.tanh(x)
         # Policy Layer:
-        target_position = self.target_prediction(x)
-        pos, vel, acc = self.osqp_layer(initial_conditions, target_position)
+        x = self.target_prediction(x)
+        target_position = 2 * nn.tanh(x)
+        pos, vel, acc, status = self.osqp_layer(initial_conditions, target_position)
         y = self.dense_4(acc)
         y = nn.tanh(y)
         z = self.dense_5(acc)
@@ -117,8 +119,8 @@ class ActorCriticNetwork(nn.Module):
         std = self.std_layer(z)
         std = nn.softplus(std)  # std != 0
         values = self.value_layer(w)
-        return mean, std, values
+        return mean, std, values, status
 
     def __call__(self, x):
-        mean, std, values = self.model(x)
-        return mean, std, values
+        mean, std, values, status = self.model(x)
+        return mean, std, values, status

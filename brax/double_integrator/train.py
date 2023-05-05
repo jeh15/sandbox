@@ -12,7 +12,6 @@ from brax.envs.env import Env
 
 import model
 import model_utilities
-import train_utilities
 import puck
 import visualize_puck as visualizer
 import custom_wrapper
@@ -76,7 +75,7 @@ def main(argv=None):
 
     # Setup Gym Environment:
     num_envs = 10
-    max_episode_length = 400
+    max_episode_length = 200
     epsilon = 0.0
     reward_threshold = max_episode_length - epsilon
     training_length = 5
@@ -96,9 +95,14 @@ def main(argv=None):
         time_horizon=1.0,
         nodes=11,
     )
+    # initial_params = init_params(
+    #     module=network,
+    #     input_size=(1, env.observation_size),
+    #     key=initial_key,
+    # )
     initial_params = init_params(
         module=network,
-        input_size=(1, env.observation_size),
+        input_size=(env.observation_size),
         key=initial_key,
     )
     # Create a train state:
@@ -111,29 +115,61 @@ def main(argv=None):
     del initial_params
 
     # Test Environment:
-    key, subkey = jax.random.split(initial_key)
+    key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
-        key, subkey = jax.random.split(subkey)
-        carry, data = train_utilities.rollout(
-            model_state,
-            subkey,
-            reset_fn,
-            step_fn,
-            max_episode_length,
-        )
-        # Unpack carry and data:
-        model_state, states, env_key = carry
-        states_episode, values_episode, log_probability_episode, \
-            actions_episode, rewards_episode, masks_episode = data
+        states = reset_fn(env_key)
+        states_episode = []
+        values_episode = []
+        log_probability_episode = []
+        actions_episode = []
+        rewards_episode = []
+        masks_episode = []
+        for environment_step in range(max_episode_length):
+            # Brax Environment Step:
+            key, env_key = jax.random.split(env_key)
+            mean, std, values, status = model_utilities.forward_pass(
+                model_state.params,
+                model_state.apply_fn,
+                states.obs,
+            )
+            # Make sure the QP Layer is solving:
+            assert (status.status).any()
+            actions, log_probability, entropy = model_utilities.select_action(
+                mean,
+                std,
+                env_key,
+            )
+            next_states = step_fn(
+                states,
+                actions,
+                env_key,
+            )
+            states_episode.append(states.obs)
+            values_episode.append(jnp.squeeze(values))
+            log_probability_episode.append(jnp.squeeze(log_probability))
+            actions_episode.append(jnp.squeeze(actions))
+            rewards_episode.append(jnp.squeeze(states.reward))
+            masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
+            states = next_states
+
+        # Convert to Jax Arrays:
+        states_episode = jnp.asarray(states_episode)
+        values_episode = jnp.asarray(values_episode)
+        log_probability_episode = jnp.asarray(log_probability_episode)
+        actions_episode = jnp.asarray(actions_episode)
+        rewards_episode = jnp.asarray(rewards_episode)
+        masks_episode = jnp.asarray(masks_episode)
 
         # No Gradient Calculation:
-        _, _, values = jax.lax.stop_gradient(
+        _, _, values, status = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             ),
         )
+        # Make sure the QP Layer is solving:
+        assert (status.status).any()
 
         # Calculate Advantage:
         values_episode = jnp.concatenate(

@@ -8,10 +8,6 @@ import jax
 import jax.numpy as jnp
 from jaxopt import BoxOSQP
 
-import time
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
 
 @partial(jax.jit, static_argnames=['dt'])
 def equality_constraints(
@@ -42,9 +38,14 @@ def equality_constraints(
     ux = q[2, :]
 
     # 1. Initial Condition Constraints:
+    # initial_condition = jnp.asarray([
+    #     x[0] - initial_conditions[..., 0],
+    #     dx[0] - initial_conditions[..., 1],
+    # ], dtype=float)
+
     initial_condition = jnp.asarray([
-        x[0] - initial_conditions[..., 0],
-        dx[0] - initial_conditions[..., 1],
+        x[0] - initial_conditions[0],
+        dx[0] - initial_conditions[1],
     ], dtype=float)
 
     # 2. Collocation Constraints:
@@ -80,7 +81,7 @@ def inequality_constraints(
     ux = q[2, :]
 
     # State Limits:
-    position_limit = 2.4
+    position_limit = 10.0
     velocity_limit = 10.0
     force_limit = 10.0
     inequality_constraints = jnp.vstack(
