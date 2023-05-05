@@ -41,14 +41,14 @@ class Puck(env.PipelineEnv):
         q = self.sys.init_q + jax.random.uniform(
             rng1,
             (self.sys.q_size(),),
-            minval=jnp.array([-eps]),
-            maxval=jnp.array([eps]),
+            minval=jnp.array([-2.0]),
+            maxval=jnp.array([-1.0]),
         )
         qd = jax.random.uniform(
             rng2,
             (self.sys.qd_size(),),
-            minval=jnp.array([-eps]),
-            maxval=jnp.array([eps]),
+            minval=jnp.array([0.0]),
+            maxval=jnp.array([0.0]),
         )
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)

@@ -10,7 +10,9 @@ from jaxopt import BoxOSQP
 
 import time
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+from matplotlib.animation import FFMpegWriter
+from matplotlib.patches import Circle, Rectangle
+from tqdm import tqdm
 
 
 @partial(jax.jit, static_argnames=['dt'])
@@ -114,7 +116,7 @@ def objective_function(
     ux = q[2, :]
 
     # Objective Function:
-    target_objective = jnp.sum((x - target_position) ** 2, axis=0)
+    target_objective = 10 * jnp.sum((x - target_position) ** 2, axis=0)
     minimize_control = jnp.sum(ux ** 2, axis=0)
 
     objective_function = jnp.sum(
@@ -241,5 +243,184 @@ def qp_layer(
     pos = sol.primal[0][:nodes]
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
-    # return pos, vel, acc
     return pos, vel, acc, state
+
+
+def generate_batch_video(
+        states: jax.typing.ArrayLike,
+        target: jax.typing.ArrayLike,
+        batch_size: int,
+        dt: float,
+        name: str,
+):
+    # Subplot Layout: (Finds closest square)
+    layout = np.floor(
+        np.sqrt(batch_size)
+    ).astype(int)
+
+    # Create plot handles for visualization:
+    fig, axes = plt.subplots(nrows=layout, ncols=layout)
+
+    lb, ub = -2.4, 2.4
+    for ax in axes.flatten():
+        ax.axis('equal')
+        ax.set_xlim([lb, ub])
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    fig.suptitle('Simulation:')
+
+    # Initialize Patch: (puck)
+    width = 1.0 / 2
+    height = 0.5 / 2
+    xy_puck = (0, 0)
+    puck_patches = []
+    goal_patches = []
+    for iteration in range(batch_size):
+        goal_patch = Circle(
+            (target[iteration], 0.25), radius=0.1, color='red', zorder=15,
+        )
+        puck_patch = Rectangle(
+            xy_puck, width, height, color='cornflowerblue', zorder=5,
+        )
+        puck_patches.append(puck_patch)
+        goal_patches.append(goal_patch)
+
+    iteration = 0
+    for ax, puck_patch, goal_patch in zip(axes.flatten(), puck_patches, goal_patches):
+        ax.text(
+            target[iteration],
+            0.6,
+            'Goal',
+            fontsize=6,
+            horizontalalignment='center',
+            verticalalignment='center',
+        )
+        ax.add_patch(puck_patch)
+        ax.add_patch(goal_patch)
+        ax.hlines(0, lb, ub, colors='black', linewidth=0.75, linestyles='--', zorder=0)
+        iteration += 1
+
+    # Create video writer:
+    fps = 24
+    rate = int(1.0 / (dt * fps))
+    rate = rate if rate >= 1 else 1
+    writer_obj = FFMpegWriter(fps=fps)
+    video_length = states.shape[-1]
+    with writer_obj.saving(fig, name + ".mp4", 300):
+        for simulation_step in tqdm(range(0, video_length)):
+            fig, writer_obj, puck_patch = _visualize_batch(
+                fig=fig,
+                writer_obj=writer_obj,
+                patches=puck_patches,
+                state=states[..., simulation_step],
+                width=width,
+                height=height,
+            )
+
+
+def _visualize_batch(fig, writer_obj, patches, state, width, height):
+    puck_patches = patches
+    state_iter = 0
+    for puck_patch in puck_patches:
+        # Update Patch: (x, z) position
+        puck_patch.set(
+            xy=(
+                state[state_iter] - width / 2,
+                - height / 2,
+            ),
+        )
+        state_iter += 1
+    # Update Drawing:
+    fig.canvas.draw()
+    # Grab and Save Frame:
+    writer_obj.grab_frame()
+    return fig, writer_obj, patches
+
+
+# Test JAXopt OSQP:
+def main(argv=None) -> None:
+    # Random Key:
+    key = jax.random.PRNGKey(42)
+    key, subkey = jax.random.split(key)
+
+    # Optimization Parameters: (These really matter for solve convergence)
+    time_horizon = 5.0
+    nodes = 21
+    num_optimizations = 25
+
+    # Dummy Inputs:
+    initial_condition = []
+    target_position = []
+    for _ in range(num_optimizations):
+        key, subkey = jax.random.split(subkey)
+        initial_condition.append(
+            jax.random.uniform(
+                key=subkey,
+                shape=(2,),
+                minval=jnp.array([-2.0, 0]),
+                maxval=jnp.array([-1.0, 0]),
+                dtype=jnp.float32,
+            ),
+        )
+        target_position.append(
+            jax.random.uniform(
+                key=subkey,
+                shape=(1,),
+                minval=jnp.array([1.0]),
+                maxval=jnp.array([2.0]),
+                dtype=jnp.float32,
+            ),
+        )
+
+    initial_condition = jnp.asarray(initial_condition)
+    target_position = jnp.asarray(target_position)
+
+    # Preprocess QP:
+    equaility_functions, inequality_functions, objective_functions = qp_preprocess(
+        time_horizon,
+        nodes,
+    )
+
+    # Isolate Function w/ Lambda Function:
+    vqp = lambda x, y: qp_layer(
+        x, y, equaility_functions, inequality_functions, objective_functions, nodes,
+    )
+    vqp_layer = jax.vmap(
+        vqp,
+        in_axes=(0, 0),
+        out_axes=(0, 0, 0, 0),
+    )
+
+    # Warmup:
+    _, _, _, _ = vqp_layer(
+        initial_condition,
+        target_position,
+    )
+
+    # Solve QP:
+    start_time = time.time()
+    pos, vel, acc, state = vqp_layer(
+        initial_condition,
+        target_position,
+    )
+    elapsed_time = time.time() - start_time
+    print(f'Elapsed Time: {elapsed_time:.3f} seconds')
+
+    # Print Status:
+    print(f'Optimization Solved: {(state.status).any()}')
+
+    visualize_batches = 25
+    generate_batch_video(
+        states=pos,
+        target=target_position,
+        batch_size=visualize_batches,
+        dt=time_horizon/(nodes - 1),
+        name=f'./videos/puck_simulation'
+    )
+
+
+if __name__ == '__main__':
+    app.run(main)
