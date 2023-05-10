@@ -6,15 +6,9 @@ from flax import linen as nn
 import distrax
 
 
-# @functools.partial(jax.jit, static_argnames=['apply_fn'])
-# def forward_pass(model_params, apply_fn, x):
-#     mean, std, values, status = apply_fn,({'params': model_params}, x)
-#     return mean, std, values, status
-
-
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def forward_pass(model_params, apply_fn, x):
-    mean, std, values, status = jax.vmap(apply_fn, in_axes=(None, 0), out_axes=(0, 0, 0, 0))({'params': model_params}, x)
+    mean, std, values, status = apply_fn({'params': model_params}, x)
     return mean, std, values, status
 
 
@@ -35,7 +29,9 @@ def evaluate_action(mean, std, action):
     return log_probability, entropy
 
 
+# Vmap Version:
 @functools.partial(jax.jit, static_argnames=['episode_length'])
+@functools.partial(jax.vmap, in_axes=(0, 0, 0, None), out_axes=(0, 0))
 def calculate_advantage(rewards, values, mask, episode_length):
     gamma = 0.99
     lam = 0.95
@@ -49,6 +45,21 @@ def calculate_advantage(rewards, values, mask, episode_length):
     returns = advantage + values[:-1]
     return advantage, returns
 
+
+# No Vmap Version:
+# @functools.partial(jax.jit, static_argnames=['episode_length'])
+# def calculate_advantage(rewards, values, mask, episode_length):
+#     gamma = 0.99
+#     lam = 0.95
+#     gae = 0.0
+#     advantage = []
+#     for i in reversed(range(episode_length)):
+#         error = rewards[i] + gamma * values[i+1] * mask[i] - values[i]
+#         gae = error + gamma * lam * mask[i] * gae
+#         advantage.append(gae)
+#     advantage = jnp.array(advantage, dtype=jnp.float32)[::-1]
+#     returns = advantage + values[:-1]
+#     return advantage, returns
 
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def loss_function(
@@ -65,7 +76,7 @@ def loss_function(
     entropy_coeff = 0.01
     clip_coeff = 0.2
 
-    # Forward Pass Network:
+    # Forward Pass Network: If forward passed... Too many inputs. expects (1, 2)
     mean, std, values, status = forward_pass(model_params, apply_fn, states)
     mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
 
