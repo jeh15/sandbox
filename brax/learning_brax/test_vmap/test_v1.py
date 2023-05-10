@@ -73,9 +73,9 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 10
+    num_envs = 124
     max_episode_length = 200
-    training_length = 5
+    training_length = 200
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -196,7 +196,7 @@ def main(argv=None):
             [values_episode, values],
             axis=1,
         )
-        # TODO: Check if this... Could be silently failing... Need to VMAP?
+
         advantage_episode, returns_episode = jax.lax.stop_gradient(
             model_utilities.calculate_advantage(
                 rewards_episode,
@@ -227,8 +227,8 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        if iteration % 5 == 0:
-            print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
+        # if iteration % 5 == 0:
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 

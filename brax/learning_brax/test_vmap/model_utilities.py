@@ -1,3 +1,4 @@
+from typing import Callable, Tuple
 import functools
 
 import jax
@@ -76,12 +77,43 @@ def loss_function(
     entropy_coeff = 0.01
     clip_coeff = 0.2
 
-    # Forward Pass Network: If forward passed... Too many inputs. expects (1, 2)
-    mean, std, values, status = forward_pass(model_params, apply_fn, states)
-    mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
+    # Forward Pass Rollout:
+    # Change leading axis of scan arrays: redundant... maybe change test.py...
+    states = jnp.swapaxes(
+        jnp.asarray(states), axis1=1, axis2=0,
+    )
+    actions = jnp.swapaxes(
+        jnp.asarray(actions), axis1=1, axis2=0,
+    )
+    length = states.shape[0]
 
-    # Replay actions:
-    log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+    def forward_pass_rollout(carry, xs):
+        states, actions = xs
+        mean, std, values, status = forward_pass(model_params, apply_fn, states)
+        mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
+        # Replay actions:
+        log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+        carry = None
+        data = (values, log_probability, entropy)
+        return carry, data
+
+    # Scan over replay:
+    carry, data = jax.lax.scan(
+        forward_pass_rollout,
+        None,
+        (states, actions),
+        length,
+    )
+    values, log_probability, entropy = data
+    values = jnp.swapaxes(
+        jnp.asarray(values), axis1=1, axis2=0,
+    )
+    log_probability = jnp.swapaxes(
+        jnp.asarray(log_probability), axis1=1, axis2=0,
+    )
+    entropy = jnp.swapaxes(
+        jnp.asarray(entropy), axis1=1, axis2=0,
+    )
 
     # Calculate Ratio: (Should this be No Grad?)
     log_ratios = log_probability - previous_log_probability
