@@ -31,11 +31,12 @@ def generate_batch_video(
         ax.set_xticks([])
         ax.set_yticks([])
 
-    fig.suptitle('puck Pole Simulation:')
+    fig.suptitle('Puck Simulation:')
 
     # Initialize Patch: (puck)
-    width = env.sys.geoms[0].halfsize[0][0]
-    height = env.sys.geoms[0].halfsize[0][2]
+    scale = 2.0
+    width = scale * env.sys.geoms[0].halfsize[0][0]
+    height = scale * env.sys.geoms[0].halfsize[0][2]
     xy_puck = (0, 0)
     puck_patches = []
     goal_patches = []

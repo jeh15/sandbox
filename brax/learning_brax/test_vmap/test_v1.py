@@ -1,5 +1,6 @@
 from absl import app
 from typing import Optional
+import time
 
 import numpy as np
 import jax
@@ -14,6 +15,7 @@ import model_base as model
 import model_utilities
 import puck
 import custom_wrapper
+import visualize_puck as visualizer
 
 
 def create_environment(
@@ -69,13 +71,10 @@ def main(argv=None):
     # RNG Key:
     key_seed = 42
 
-    best_reward = 0.0
-    best_iteration = 0
-
     # Setup Gym Environment:
-    num_envs = 124
+    num_envs = 32
     max_episode_length = 200
-    training_length = 200
+    training_length = 10
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -87,13 +86,6 @@ def main(argv=None):
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
-
-    # Base Network:
-    # network = model.ActorCriticNetwork(
-    #     action_space=env.num_actions,
-    #     time_horizon=1.0,
-    #     nodes=11,
-    # )
 
     # Vmap Network:
     network = model.ActorCriticNetworkVmap(
@@ -107,11 +99,6 @@ def main(argv=None):
         input_size=(num_envs, env.observation_size),
         key=initial_key,
     )
-    # initial_params = init_params(
-    #     module=network,
-    #     input_size=(env.observation_size),
-    #     key=initial_key,
-    # )
 
     # Create a train state:
     learning_rate = 0.001
@@ -132,6 +119,7 @@ def main(argv=None):
         actions_episode = []
         rewards_episode = []
         masks_episode = []
+        start_time = time.time()
         for environment_step in range(max_episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
@@ -223,14 +211,45 @@ def main(argv=None):
             ),
         )
 
-        if average_reward >= best_reward:
-            best_reward = average_reward
-            best_iteration = iteration
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
 
-        # if iteration % 5 == 0:
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
+    state_history = []
+    states = reset_fn(env_key)
+    state_history.append(states)
+    for _ in range(max_episode_length):
+        key, env_key = jax.random.split(env_key)
+        mean, std, values, status = jax.lax.stop_gradient(
+            model_utilities.forward_pass(
+                model_state.params,
+                model_state.apply_fn,
+                states.obs,
+            )
+        )
+        # Make sure the QP Layer is solving:
+        assert (status.status).any()
+        actions, _, _ = jax.lax.stop_gradient(
+            model_utilities.select_action(
+                mean,
+                std,
+                env_key,
+            )
+        )
+        states = jax.lax.stop_gradient(
+            step_fn(
+                states,
+                actions,
+                env_key,
+            )
+        )
+        state_history.append(states)
 
-    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
+    visualize_batches = 25
+    visualizer.generate_batch_video(
+        env=env,
+        states=state_history,
+        batch_size=visualize_batches,
+        name=f'./videos/puck_simulation_{iteration}'
+    )
 
 
 if __name__ == '__main__':
