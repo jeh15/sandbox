@@ -92,8 +92,8 @@ def main(argv=None):
     initial_key = jax.random.PRNGKey(key_seed)
     network = model.ActorCriticNetwork(
         action_space=env.num_actions,
-        time_horizon=1.0,
-        nodes=11,
+        time_horizon=0.1,
+        nodes=3,
     )
     # initial_params = init_params(
     #     module=network,

@@ -37,12 +37,6 @@ def equality_constraints(
     dx = q[1, :]
     ux = q[2, :]
 
-    # 1. Initial Condition Constraints:
-    # initial_condition = jnp.asarray([
-    #     x[0] - initial_conditions[..., 0],
-    #     dx[0] - initial_conditions[..., 1],
-    # ], dtype=float)
-
     initial_condition = jnp.asarray([
         x[0] - initial_conditions[0],
         dx[0] - initial_conditions[1],
@@ -226,7 +220,7 @@ def qp_layer(
         primal_infeasible_tol=1e-3,
         dual_infeasible_tol=1e-3,
         rho_start=1e-2,
-        maxiter=8000,
+        maxiter=500,
         tol=1e-3,
         verbose=0,
         jit=True,
@@ -242,5 +236,5 @@ def qp_layer(
     pos = sol.primal[0][:nodes]
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
-    # return pos, vel, acc
+
     return pos, vel, acc, state

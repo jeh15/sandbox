@@ -222,34 +222,46 @@ def qp_layer(
     # PRIMAL_INFEASIBLE = 3  # infeasible primal
 
     # Create QP:
+    # qp = BoxOSQP(
+    #     check_primal_dual_infeasability=False,
+    #     eq_qp_solve='cg+jacobi',
+    #     primal_infeasible_tol=1e-3,
+    #     dual_infeasible_tol=1e-3,
+    #     rho_start=1e-2,
+    #     maxiter=500,
+    #     tol=1e-3,
+    #     verbose=0,
+    #     jit=True,
+    # )
+
     qp = BoxOSQP(
-        check_primal_dual_infeasability=False,
-        eq_qp_solve='cg+jacobi',
+        momentum=1.6,
         primal_infeasible_tol=1e-3,
         dual_infeasible_tol=1e-3,
         rho_start=1e-2,
-        maxiter=2000,
-        tol=1e-3,
+        maxiter=100,
+        tol=1e-2,
         verbose=0,
         jit=True,
     )
 
-    # # Solve QP:
-    # sol, state = qp.run(
-    #     params_obj=(H, f),
-    #     params_eq=A,
-    #     params_ineq=(lb, ub),
-    # )
-
     # Solve QP:
-    sol, _ = qp.run(
+    sol, state = qp.run(
         params_obj=(H, f),
         params_eq=A,
         params_ineq=(lb, ub),
     )
 
+    # Solve QP:
+    # sol, _ = qp.run(
+    #     params_obj=(H, f),
+    #     params_eq=A,
+    #     params_ineq=(lb, ub),
+    # )
+
     pos = sol.primal[0][:nodes]
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
 
-    return pos, vel, acc
+    # return pos, vel, acc
+    return pos, vel, acc, state

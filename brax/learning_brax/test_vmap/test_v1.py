@@ -71,6 +71,9 @@ def main(argv=None):
     # RNG Key:
     key_seed = 42
 
+    best_reward = 0.0
+    best_iteration = 0
+
     # Setup Gym Environment:
     num_envs = 32
     max_episode_length = 200
@@ -90,8 +93,8 @@ def main(argv=None):
     # Vmap Network:
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
-        time_horizon=1.0,
-        nodes=11,
+        time_horizon=0.1,
+        nodes=3,
     )
 
     initial_params = init_params(
@@ -123,18 +126,13 @@ def main(argv=None):
         for environment_step in range(max_episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
-            # mean, std, values, status = model_utilities.forward_pass(
-            #     model_state.params,
-            #     model_state.apply_fn,
-            #     states.obs,
-            # )
-            mean, std, values = model_utilities.forward_pass(
+            mean, std, values, status = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             )
             # Make sure the QP Layer is solving:
-            # assert (status.status).any()
+            assert (status.status).any()
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
                 std,
@@ -174,14 +172,7 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        # _, _, values, status = jax.lax.stop_gradient(
-        #     model_utilities.forward_pass(
-        #         model_state.params,
-        #         model_state.apply_fn,
-        #         states.obs,
-        #     ),
-        # )
-        _, _, values = jax.lax.stop_gradient(
+        _, _, values, status = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -189,7 +180,7 @@ def main(argv=None):
             ),
         )
         # Make sure the QP Layer is solving:
-        # assert (status.status).any()
+        assert (status.status).any()
 
         # Calculate Advantage:
         values_episode = jnp.concatenate(
@@ -223,21 +214,20 @@ def main(argv=None):
             ),
         )
 
+        if average_reward >= best_reward:
+            best_reward = average_reward
+            best_iteration = iteration
+
         print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
 
+    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
+    
     state_history = []
     states = reset_fn(env_key)
     state_history.append(states)
     for _ in range(max_episode_length):
         key, env_key = jax.random.split(env_key)
-        # mean, std, values, status = jax.lax.stop_gradient(
-        #     model_utilities.forward_pass(
-        #         model_state.params,
-        #         model_state.apply_fn,
-        #         states.obs,
-        #     )
-        # )
-        mean, std, values = jax.lax.stop_gradient(
+        mean, std, values, status = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -245,7 +235,7 @@ def main(argv=None):
             )
         )
         # Make sure the QP Layer is solving:
-        # assert (status.status).any()
+        assert (status.status).any()
         actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
                 mean,

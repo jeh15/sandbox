@@ -9,7 +9,7 @@
 		<motor ctrlrange="-10 10"/>
 	</default>
 
-	<option gravity="0 0 -9.81" timestep="0.02" />
+	<option gravity="0 0 -9.81" timestep="0.05" />
 
     <size nstack="3000"/>
     

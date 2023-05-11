@@ -12,7 +12,7 @@ class ActorCriticNetwork(nn.Module):
 
     def setup(self):
         dtype = jnp.float32
-        features = 128
+        features = 64
         self.dense_1 = nn.Dense(
             features=features,
             name='layer_1',
@@ -98,10 +98,7 @@ class ActorCriticNetwork(nn.Module):
         # Policy Layer:
         x = self.target_prediction(x)
         target_position = 2 * nn.tanh(x)
-        # pos, vel, acc, status = self.osqp_layer(
-        #     initial_conditions, target_position
-        # )
-        pos, vel, acc = self.osqp_layer(
+        pos, vel, acc, status = self.osqp_layer(
             initial_conditions, target_position
         )
         y = self.dense_4(acc)
@@ -119,16 +116,11 @@ class ActorCriticNetwork(nn.Module):
         std = self.std_layer(z)
         std = nn.softplus(std)  # std != 0
         values = self.value_layer(w)
-        # return mean, std, values, status
-        return mean, std, values
-
-    # def __call__(self, x):
-    #     mean, std, values, status = self.model(x)
-    #     return mean, std, values, status
+        return mean, std, values, status
 
     def __call__(self, x):
-        mean, std, values = self.model(x)
-        return mean, std, values
+        mean, std, values, status = self.model(x)
+        return mean, std, values, status
 
 
 class ActorCriticNetworkVmap(nn.Module):
@@ -137,10 +129,22 @@ class ActorCriticNetworkVmap(nn.Module):
     nodes: int
 
     def setup(self) -> None:
+        # Params are not shared across batch axis:
+        # self.model = nn.vmap(
+        #     ActorCriticNetwork,
+        #     variable_axes={'params': 0, 'batch_stats': 0},
+        #     split_rngs={'params': True},
+        #     in_axes=0,
+        # )(
+        #     action_space=self.action_space,
+        #     time_horizon=self.time_horizon,
+        #     nodes=self.nodes,
+        # )
+        # Shared Params: What does this mean...
         self.model = nn.vmap(
             ActorCriticNetwork,
-            variable_axes={'params': 0},
-            split_rngs={'params': True},
+            variable_axes={'params': None},
+            split_rngs={'params': False},
             in_axes=0,
         )(
             action_space=self.action_space,
@@ -148,10 +152,6 @@ class ActorCriticNetworkVmap(nn.Module):
             nodes=self.nodes,
         )
 
-    # def __call__(self, x):
-    #     mean, std, values, status = self.model(x)
-    #     return mean, std, values, status
-
     def __call__(self, x):
-        mean, std, values = self.model(x)
-        return mean, std, values
+        mean, std, values, status = self.model(x)
+        return mean, std, values, status

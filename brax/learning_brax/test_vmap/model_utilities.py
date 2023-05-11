@@ -7,20 +7,12 @@ from flax import linen as nn
 import distrax
 
 
-# @functools.partial(jax.jit, static_argnames=['apply_fn'])
-# def forward_pass(model_params, apply_fn, x):
-#     # Print Statement:
-#     print('Running Forward Pass...')
-#     mean, std, values, status = apply_fn({'params': model_params}, x)
-#     return mean, std, values, status
-
-
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def forward_pass(model_params, apply_fn, x):
     # Print Statement:
     print('Running Forward Pass...')
-    mean, std, values = apply_fn({'params': model_params}, x)
-    return mean, std, values
+    mean, std, values, status = apply_fn({'params': model_params}, x)
+    return mean, std, values, status
 
 
 @jax.jit
@@ -87,8 +79,7 @@ def loss_function(
 
     def forward_pass_rollout(carry, xs):
         states, actions = xs
-        # mean, std, values, status = forward_pass(model_params, apply_fn, states)
-        mean, std, values = forward_pass(model_params, apply_fn, states)
+        mean, std, values, _ = forward_pass(model_params, apply_fn, states)
         mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
         # Replay actions:
         log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)

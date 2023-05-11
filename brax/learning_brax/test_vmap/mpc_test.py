@@ -1,5 +1,6 @@
 from absl import app
 from typing import Optional
+import functools
 
 import numpy as np
 import jax
@@ -17,6 +18,8 @@ from tqdm import tqdm
 import qp
 import puck
 import custom_wrapper
+
+import time
 
 
 def generate_batch_video(
@@ -142,16 +145,60 @@ def create_environment(
     return env
 
 
+@functools.partial(jax.jit, static_argnames=['qp_func', 'reset_fn', 'step_fn', 'episode_length'])
+def rollout(
+    target_position,
+    key,
+    qp_func,
+    reset_fn,
+    step_fn,
+    episode_length,
+):
+    """ Rollout of Environment Episode """
+    # Generate Rollout RNG Keys:
+    key, reset_key, env_key = jax.random.split(key, 3)
+    # Reset Environment:
+    states = reset_fn(reset_key)
+
+    # jax.lax.scan function:
+    def episode_loop(carry, data):
+        # Unpack Carry Tuple:
+        states, env_key = carry
+        key, env_key = jax.random.split(env_key)
+        # Brax Environment Step:
+        pos, vel, acc, status = qp_func(states.obs, target_position)
+        action = jnp.expand_dims(acc[..., 0], axis=-1)
+        states = step_fn(
+            states,
+            action,
+            env_key,
+        )
+
+        carry = (states, env_key)
+        data = states
+        return carry, data
+
+    # Scan over episode:
+    carry, data = jax.lax.scan(
+        episode_loop,
+        (states, env_key),
+        (),
+        episode_length,
+    )
+
+    return carry, data
+
+
 def main(argv=None):
     # RNG Key:
     key_seed = 42
 
     # Setup Gym Environment:
-    num_envs = 25
+    num_envs = 32
     max_episode_length = 200
     env = create_environment(
         episode_length=max_episode_length,
-        action_repeat=5,
+        action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
     )
@@ -159,8 +206,10 @@ def main(argv=None):
     reset_fn = jax.jit(env.reset)
 
     # Optimization Parameters: (These really matter for solve convergence)
+    # time_horizon = 1.0
+    # nodes = 11
     time_horizon = 1.0
-    nodes = 11
+    nodes = 3
 
     # Preprocess QP:
     equaility_functions, inequality_functions, objective_functions = qp.qp_preprocess(
@@ -200,28 +249,41 @@ def main(argv=None):
 
     # MPC Loop:
     key, env_key = jax.random.split(subkey)
-    states = reset_fn(env_key)
-    states_episode = []
-    for mpc_iteration in range(max_episode_length):
-        key, env_key = jax.random.split(env_key)
-        # Brax Environment Step:
-        pos, vel, acc, status = vqp_layer(states.obs, target_position)
-        assert (status.status).any()
-        action = jnp.expand_dims(acc[..., 0], axis=-1)
-        states = step_fn(
-            states,
-            action,
-            env_key,
-        )
-        states_episode.append(states.obs)
 
-    generate_batch_video(
-        states=states_episode,
-        target=target_position,
-        batch_size=num_envs,
-        dt=env.dt,
-        name=f'./videos/puck_simulation_v2'
-    )
+    # Unrolled Loop:
+    _, states = rollout(target_position, key, vqp_layer, reset_fn, step_fn, max_episode_length)
+
+    start_time = time.time()
+    _, states = rollout(target_position, key, vqp_layer, reset_fn, step_fn, max_episode_length)
+    
+    # # For Loop:
+    # states = reset_fn(env_key)
+    # pos, vel, acc, status = vqp_layer(states.obs, target_position)
+    # states_episode = []
+    # print('Loop Start')
+    # start_time = time.time()
+    # for mpc_iteration in range(max_episode_length):
+    #     key, env_key = jax.random.split(env_key)
+    #     # Brax Environment Step:
+    #     pos, vel, acc, status = vqp_layer(states.obs, target_position)
+    #     assert (status.status).any()
+    #     action = jnp.expand_dims(acc[..., 0], axis=-1)
+    #     states = step_fn(
+    #         states,
+    #         action,
+    #         env_key,
+    #     )
+    #     states_episode.append(states.obs)
+
+    print(f'Elapsed Time: {time.time() - start_time} seconds')
+
+    # generate_batch_video(
+    #     states=states_episode,
+    #     target=target_position,
+    #     batch_size=num_envs,
+    #     dt=env.dt,
+    #     name=f'./videos/puck_simulation_v2'
+    # )
 
 
 if __name__ == '__main__':
