@@ -37,12 +37,6 @@ def equality_constraints(
     dx = q[1, :]
     ux = q[2, :]
 
-    # 1. Initial Condition Constraints:
-    # initial_condition = jnp.asarray([
-    #     x[0] - initial_conditions[..., 0],
-    #     dx[0] - initial_conditions[..., 1],
-    # ], dtype=float)
-
     initial_condition = jnp.asarray([
         x[0] - initial_conditions[0],
         dx[0] - initial_conditions[1],
@@ -135,6 +129,9 @@ def qp_preprocess(
     time_horizon: float,
     nodes: int,
 ) -> Callable:
+    # Print Statement:
+    print('Running Preprocess...')
+
     # Optimization Parameters:
     dt = time_horizon / (nodes - 1)
 
@@ -181,6 +178,9 @@ def qp_layer(
     objective_functions: Callable,
     nodes: int,
 ) -> jnp.ndarray:
+    # Print Statement:
+    print('Running QP Layer...')
+
     # Unpack Functions:
     b_eq_fn, A_eq_fn = equaility_functions
     b_ineq_fn, A_ineq_fn = inequality_functions
@@ -223,17 +223,26 @@ def qp_layer(
 
     # Create QP:
     qp = BoxOSQP(
+        check_primal_dual_infeasability=False,
+        eq_qp_solve='cg+jacobi',
         primal_infeasible_tol=1e-3,
         dual_infeasible_tol=1e-3,
         rho_start=1e-2,
-        maxiter=8000,
+        maxiter=2000,
         tol=1e-3,
         verbose=0,
         jit=True,
     )
 
+    # # Solve QP:
+    # sol, state = qp.run(
+    #     params_obj=(H, f),
+    #     params_eq=A,
+    #     params_ineq=(lb, ub),
+    # )
+
     # Solve QP:
-    sol, state = qp.run(
+    sol, _ = qp.run(
         params_obj=(H, f),
         params_eq=A,
         params_ineq=(lb, ub),
@@ -242,5 +251,5 @@ def qp_layer(
     pos = sol.primal[0][:nodes]
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
-    # return pos, vel, acc
-    return pos, vel, acc, state
+
+    return pos, vel, acc

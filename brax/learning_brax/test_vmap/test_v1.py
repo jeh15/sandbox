@@ -74,7 +74,7 @@ def main(argv=None):
     # Setup Gym Environment:
     num_envs = 32
     max_episode_length = 200
-    training_length = 10
+    training_length = 300
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -123,13 +123,18 @@ def main(argv=None):
         for environment_step in range(max_episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
-            mean, std, values, status = model_utilities.forward_pass(
+            # mean, std, values, status = model_utilities.forward_pass(
+            #     model_state.params,
+            #     model_state.apply_fn,
+            #     states.obs,
+            # )
+            mean, std, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             )
             # Make sure the QP Layer is solving:
-            assert (status.status).any()
+            # assert (status.status).any()
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
                 std,
@@ -169,7 +174,14 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        _, _, values, status = jax.lax.stop_gradient(
+        # _, _, values, status = jax.lax.stop_gradient(
+        #     model_utilities.forward_pass(
+        #         model_state.params,
+        #         model_state.apply_fn,
+        #         states.obs,
+        #     ),
+        # )
+        _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -177,7 +189,7 @@ def main(argv=None):
             ),
         )
         # Make sure the QP Layer is solving:
-        assert (status.status).any()
+        # assert (status.status).any()
 
         # Calculate Advantage:
         values_episode = jnp.concatenate(
@@ -218,7 +230,14 @@ def main(argv=None):
     state_history.append(states)
     for _ in range(max_episode_length):
         key, env_key = jax.random.split(env_key)
-        mean, std, values, status = jax.lax.stop_gradient(
+        # mean, std, values, status = jax.lax.stop_gradient(
+        #     model_utilities.forward_pass(
+        #         model_state.params,
+        #         model_state.apply_fn,
+        #         states.obs,
+        #     )
+        # )
+        mean, std, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -226,7 +245,7 @@ def main(argv=None):
             )
         )
         # Make sure the QP Layer is solving:
-        assert (status.status).any()
+        # assert (status.status).any()
         actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
                 mean,

@@ -76,7 +76,7 @@ class ActorCriticNetwork(nn.Module):
             )
         )
         # Isolate Function:
-        qp_func = lambda x, y: qp.qp_layer(
+        self.osqp_layer = lambda x, y: qp.qp_layer(
             x,
             y,
             equaility_functions,
@@ -84,12 +84,6 @@ class ActorCriticNetwork(nn.Module):
             objective_functions,
             self.nodes,
         )
-        # self.osqp_layer = jax.vmap(
-        #     qp_func,
-        #     in_axes=(0, 0),
-        #     out_axes=(0, 0, 0, 0),
-        # )
-        self.osqp_layer = qp_func
 
     # Embedded MPC Actor-Critic Network:
     def model(self, x):
@@ -104,7 +98,10 @@ class ActorCriticNetwork(nn.Module):
         # Policy Layer:
         x = self.target_prediction(x)
         target_position = 2 * nn.tanh(x)
-        pos, vel, acc, status = self.osqp_layer(
+        # pos, vel, acc, status = self.osqp_layer(
+        #     initial_conditions, target_position
+        # )
+        pos, vel, acc = self.osqp_layer(
             initial_conditions, target_position
         )
         y = self.dense_4(acc)
@@ -122,11 +119,16 @@ class ActorCriticNetwork(nn.Module):
         std = self.std_layer(z)
         std = nn.softplus(std)  # std != 0
         values = self.value_layer(w)
-        return mean, std, values, status
+        # return mean, std, values, status
+        return mean, std, values
+
+    # def __call__(self, x):
+    #     mean, std, values, status = self.model(x)
+    #     return mean, std, values, status
 
     def __call__(self, x):
-        mean, std, values, status = self.model(x)
-        return mean, std, values, status
+        mean, std, values = self.model(x)
+        return mean, std, values
 
 
 class ActorCriticNetworkVmap(nn.Module):
@@ -146,6 +148,10 @@ class ActorCriticNetworkVmap(nn.Module):
             nodes=self.nodes,
         )
 
+    # def __call__(self, x):
+    #     mean, std, values, status = self.model(x)
+    #     return mean, std, values, status
+
     def __call__(self, x):
-        mean, std, values, status = self.model(x)
-        return mean, std, values, status
+        mean, std, values = self.model(x)
+        return mean, std, values

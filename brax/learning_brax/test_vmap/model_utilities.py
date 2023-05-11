@@ -7,10 +7,20 @@ from flax import linen as nn
 import distrax
 
 
+# @functools.partial(jax.jit, static_argnames=['apply_fn'])
+# def forward_pass(model_params, apply_fn, x):
+#     # Print Statement:
+#     print('Running Forward Pass...')
+#     mean, std, values, status = apply_fn({'params': model_params}, x)
+#     return mean, std, values, status
+
+
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def forward_pass(model_params, apply_fn, x):
-    mean, std, values, status = apply_fn({'params': model_params}, x)
-    return mean, std, values, status
+    # Print Statement:
+    print('Running Forward Pass...')
+    mean, std, values = apply_fn({'params': model_params}, x)
+    return mean, std, values
 
 
 @jax.jit
@@ -47,21 +57,6 @@ def calculate_advantage(rewards, values, mask, episode_length):
     return advantage, returns
 
 
-# No Vmap Version:
-# @functools.partial(jax.jit, static_argnames=['episode_length'])
-# def calculate_advantage(rewards, values, mask, episode_length):
-#     gamma = 0.99
-#     lam = 0.95
-#     gae = 0.0
-#     advantage = []
-#     for i in reversed(range(episode_length)):
-#         error = rewards[i] + gamma * values[i+1] * mask[i] - values[i]
-#         gae = error + gamma * lam * mask[i] * gae
-#         advantage.append(gae)
-#     advantage = jnp.array(advantage, dtype=jnp.float32)[::-1]
-#     returns = advantage + values[:-1]
-#     return advantage, returns
-
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def loss_function(
     model_params,
@@ -72,6 +67,9 @@ def loss_function(
     returns,
     previous_log_probability,
 ):
+    # Print Statement:
+    print('Running Loss Function...')
+
     # Algorithm Coefficients:
     value_coeff = 0.5
     entropy_coeff = 0.01
@@ -89,7 +87,8 @@ def loss_function(
 
     def forward_pass_rollout(carry, xs):
         states, actions = xs
-        mean, std, values, status = forward_pass(model_params, apply_fn, states)
+        # mean, std, values, status = forward_pass(model_params, apply_fn, states)
+        mean, std, values = forward_pass(model_params, apply_fn, states)
         mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
         # Replay actions:
         log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
@@ -150,6 +149,9 @@ def train_step(
     returns,
     previous_log_probability,
 ):
+    # Print Statement:
+    print('Running Train Step...')
+
     gradient_function = jax.value_and_grad(loss_function)
     loss, gradients = gradient_function(
         model_state.params,
