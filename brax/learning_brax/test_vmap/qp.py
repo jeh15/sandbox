@@ -1,9 +1,6 @@
 from functools import partial
 from typing import Callable
 
-from absl import app
-
-import numpy as np
 import jax
 import jax.numpy as jnp
 from jaxopt import BoxOSQP
@@ -221,19 +218,6 @@ def qp_layer(
     # DUAL_INFEASIBLE   = 2  # infeasible dual (infeasible primal or unbounded primal).
     # PRIMAL_INFEASIBLE = 3  # infeasible primal
 
-    # Create QP:
-    # qp = BoxOSQP(
-    #     check_primal_dual_infeasability=False,
-    #     eq_qp_solve='cg+jacobi',
-    #     primal_infeasible_tol=1e-3,
-    #     dual_infeasible_tol=1e-3,
-    #     rho_start=1e-2,
-    #     maxiter=500,
-    #     tol=1e-3,
-    #     verbose=0,
-    #     jit=True,
-    # )
-
     qp = BoxOSQP(
         momentum=1.6,
         primal_infeasible_tol=1e-3,
@@ -252,16 +236,8 @@ def qp_layer(
         params_ineq=(lb, ub),
     )
 
-    # Solve QP:
-    # sol, _ = qp.run(
-    #     params_obj=(H, f),
-    #     params_eq=A,
-    #     params_ineq=(lb, ub),
-    # )
-
     pos = sol.primal[0][:nodes]
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
 
-    # return pos, vel, acc
     return pos, vel, acc, state

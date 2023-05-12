@@ -1,5 +1,6 @@
 from absl import app
 from typing import Optional
+import time
 
 import numpy as np
 import jax
@@ -10,8 +11,9 @@ from brax.envs import wrapper
 from brax.envs.env import Env
 
 
-import model
+import model_base as model
 import model_utilities
+import train_utilities
 import puck
 import visualize_puck as visualizer
 import custom_wrapper
@@ -74,11 +76,9 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 10
+    num_envs = 32
     max_episode_length = 200
-    epsilon = 0.0
-    reward_threshold = max_episode_length - epsilon
-    training_length = 5
+    training_length = 1000
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -90,21 +90,18 @@ def main(argv=None):
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
-    network = model.ActorCriticNetwork(
+    # Vmap Network:
+    network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
         time_horizon=0.1,
         nodes=3,
     )
-    # initial_params = init_params(
-    #     module=network,
-    #     input_size=(1, env.observation_size),
-    #     key=initial_key,
-    # )
     initial_params = init_params(
         module=network,
-        input_size=(env.observation_size),
+        input_size=(num_envs, env.observation_size),
         key=initial_key,
     )
+
     # Create a train state:
     learning_rate = 0.001
     model_state = create_train_state(
@@ -117,83 +114,19 @@ def main(argv=None):
     # Test Environment:
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
-        states = reset_fn(env_key)
-        states_episode = []
-        values_episode = []
-        log_probability_episode = []
-        actions_episode = []
-        rewards_episode = []
-        masks_episode = []
-        for environment_step in range(max_episode_length):
-            # Brax Environment Step:
-            key, env_key = jax.random.split(env_key)
-            mean, std, values, status = model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                states.obs,
-            )
-            # Make sure the QP Layer is solving:
-            assert (status.status).any()
-            actions, log_probability, entropy = model_utilities.select_action(
-                mean,
-                std,
-                env_key,
-            )
-            next_states = step_fn(
-                states,
-                actions,
-                env_key,
-            )
-            states_episode.append(states.obs)
-            values_episode.append(jnp.squeeze(values))
-            log_probability_episode.append(jnp.squeeze(log_probability))
-            actions_episode.append(jnp.squeeze(actions))
-            rewards_episode.append(jnp.squeeze(states.reward))
-            masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
-            states = next_states
-
-        # Convert to Jax Arrays:
-        states_episode = jnp.asarray(states_episode)
-        values_episode = jnp.asarray(values_episode)
-        log_probability_episode = jnp.asarray(log_probability_episode)
-        actions_episode = jnp.asarray(actions_episode)
-        rewards_episode = jnp.asarray(rewards_episode)
-        masks_episode = jnp.asarray(masks_episode)
-
-        # No Gradient Calculation:
-        _, _, values, status = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                states.obs,
-            ),
-        )
-        # Make sure the QP Layer is solving:
-        assert (status.status).any()
-
-        # Calculate Advantage:
-        values_episode = jnp.concatenate(
-            [values_episode, jnp.expand_dims(np.squeeze(values), axis=0)],
-            axis=0,
-        )
-        advantage_episode, returns_episode = jax.lax.stop_gradient(
-            model_utilities.calculate_advantage(
-                rewards_episode,
-                values_episode,
-                masks_episode,
-                max_episode_length,
-            )
+        key, env_key = jax.random.split(env_key)
+        start_time = time.time()
+        model_state, loss, carry, data = train_utilities.rollout(
+            model_state=model_state,
+            key=env_key,
+            reset_fn=reset_fn,
+            step_fn=step_fn,
+            episode_length=max_episode_length,
         )
 
-        # Update Function:
-        model_state, loss = model_utilities.train_step(
-            model_state,
-            states_episode,
-            actions_episode,
-            advantage_episode,
-            returns_episode,
-            log_probability_episode,
-        )
+        # Unpack data:
+        states_episode, values_episode, log_probability_episode, \
+            actions_episode, rewards_episode, masks_episode = data
 
         average_reward = np.mean(
             np.sum(
@@ -206,13 +139,7 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        if iteration % 5 == 0:
-            print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss}')
-
-        if average_reward >= reward_threshold:
-            print(f'Reward threshold achieved at iteration {iteration}')
-            print(f'Average Reward: {average_reward} \t Loss: {loss}')
-            break
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 

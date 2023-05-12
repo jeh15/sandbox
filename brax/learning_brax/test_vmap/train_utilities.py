@@ -10,7 +10,6 @@ import model_utilities
 # Imports for Types:
 from flax.training.train_state import TrainState
 from brax.envs.env import State
-from brax.envs import env as BraxEnv
 from jax.random import PRNGKey
 
 
@@ -39,7 +38,7 @@ def rollout(
 
         # Brax Environment Step:
         key, env_key = jax.random.split(env_key)
-        mean, std, values = model_utilities.forward_pass(
+        mean, std, values, status = model_utilities.forward_pass(
             model_state.params,
             model_state.apply_fn,
             states.obs,
@@ -75,4 +74,62 @@ def rollout(
         episode_length,
     )
 
-    return carry, data
+    # Unpack carry and data:
+    model_state, states, env_key = carry
+    states_episode, values_episode, log_probability_episode, \
+        actions_episode, rewards_episode, masks_episode = data
+
+    # Make batch dimension first:
+    states_episode = jnp.swapaxes(
+       states_episode, axis1=1, axis2=0,
+    )
+    values_episode = jnp.swapaxes(
+        values_episode, axis1=1, axis2=0,
+    )
+    log_probability_episode = jnp.swapaxes(
+        log_probability_episode, axis1=1, axis2=0,
+    )
+    actions_episode = jnp.swapaxes(
+        actions_episode, axis1=1, axis2=0,
+    )
+    rewards_episode = jnp.swapaxes(
+        rewards_episode, axis1=1, axis2=0,
+    )
+    masks_episode = jnp.swapaxes(
+        masks_episode, axis1=1, axis2=0,
+    )
+
+    # No Gradient Calculation:
+    _, _, values, _ = jax.lax.stop_gradient(
+        model_utilities.forward_pass(
+            model_state.params,
+            model_state.apply_fn,
+            states.obs,
+        ),
+    )
+
+    # Calculate Advantage:
+    values_episode = jnp.concatenate(
+        [values_episode, values],
+        axis=1,
+    )
+    advantage_episode, returns_episode = jax.lax.stop_gradient(
+        model_utilities.calculate_advantage(
+            rewards_episode,
+            values_episode,
+            masks_episode,
+            episode_length,
+        ),
+    )
+
+    # Update Function:
+    model_state, loss = model_utilities.train_step(
+        model_state,
+        states_episode,
+        actions_episode,
+        advantage_episode,
+        returns_episode,
+        log_probability_episode,
+    )
+
+    return model_state, loss, carry, data
