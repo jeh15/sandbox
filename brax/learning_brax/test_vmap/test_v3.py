@@ -11,8 +11,8 @@ from brax.envs import wrapper
 from brax.envs.env import Env
 
 
-import model_base as model
-import model_utilities
+import model_no_qp as model
+import model_utilities_no_qp as model_utilities
 import puck
 import custom_wrapper
 import visualize_puck as visualizer
@@ -93,8 +93,6 @@ def main(argv=None):
     # Vmap Network:
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
-        time_horizon=0.1,
-        nodes=3,
     )
 
     initial_params = init_params(
@@ -128,13 +126,11 @@ def main(argv=None):
         for environment_step in range(max_episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
-            mean, std, values, status = model_utilities.forward_pass(
+            mean, std, values = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             )
-            # Make sure the QP Layer is solving:
-            assert (status.status).any()
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
                 std,
@@ -175,15 +171,13 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        _, _, values, status = jax.lax.stop_gradient(
+        _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             ),
         )
-        # Make sure the QP Layer is solving:
-        assert (status.status).any()
 
         # Calculate Advantage:
         values_episode = jnp.concatenate(
@@ -239,15 +233,13 @@ def main(argv=None):
     state_history.append(states)
     for _ in range(max_episode_length):
         key, env_key = jax.random.split(env_key)
-        mean, std, values, status = jax.lax.stop_gradient(
+        mean, std, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             )
         )
-        # Make sure the QP Layer is solving:
-        assert (status.status).any()
         actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
                 mean,

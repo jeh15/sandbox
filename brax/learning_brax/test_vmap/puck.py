@@ -72,11 +72,13 @@ class Puck(env.PipelineEnv):
         x = jnp.abs(obs[0])
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 2.0, 1.0, 0.0),
+                jnp.where(x >= 2.5, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
-        reward = jnp.where(done == 1.0, -1.0, error)
+        # Punish Terminal State:
+        reward = jnp.where(done == 1.0, -100.0, error)
+        # reward = jnp.where(done == 1.0, -1.0, error)
         return state.replace(
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
         )

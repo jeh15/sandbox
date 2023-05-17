@@ -11,7 +11,7 @@ from brax.envs import wrapper
 from brax.envs.env import Env
 
 
-import model_base as model
+import model_bounded as model
 import model_utilities
 import puck
 import custom_wrapper

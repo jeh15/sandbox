@@ -75,7 +75,7 @@ def inequality_constraints(
     ux = q[2, :]
 
     # State Limits:
-    position_limit = 10.0
+    position_limit = 5.0
     velocity_limit = 10.0
     force_limit = 10.0
     inequality_constraints = jnp.vstack(
@@ -239,7 +239,7 @@ def qp_layer(
         primal_infeasible_tol=1e-3,
         dual_infeasible_tol=1e-3,
         rho_start=1e-2,
-        maxiter=100,
+        maxiter=400,
         tol=1e-2,
         verbose=0,
         jit=True,
