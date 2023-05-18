@@ -12,45 +12,35 @@ class ActorCriticNetwork(nn.Module):
 
     def setup(self):
         dtype = jnp.float32
-        features = 128
+        features = 64
         self.dense_1 = nn.Dense(
             features=features,
-            name='layer_1',
+            name='dense_1',
             dtype=dtype,
         )
         self.dense_2 = nn.Dense(
             features=features,
-            name='layer_2',
+            name='dense_2',
             dtype=dtype,
         )
         self.dense_3 = nn.Dense(
             features=features,
-            name='layer_3',
+            name='dense_3',
             dtype=dtype,
         )
         self.dense_4 = nn.Dense(
             features=features,
-            name='layer_4',
+            name='dense_4',
             dtype=dtype,
         )
         self.dense_5 = nn.Dense(
             features=features,
-            name='layer_5',
+            name='dense_5',
             dtype=dtype,
         )
         self.dense_6 = nn.Dense(
             features=features,
-            name='layer_6',
-            dtype=dtype,
-        )
-        self.dense_7 = nn.Dense(
-            features=features,
-            name='layer_7',
-            dtype=dtype,
-        )
-        self.target_prediction = nn.Dense(
-            features=1,
-            name='target_prediction_layer',
+            name='dense_6',
             dtype=dtype,
         )
         self.mean_layer = nn.Dense(
@@ -76,7 +66,7 @@ class ActorCriticNetwork(nn.Module):
             )
         )
         # Isolate Function:
-        qp_func = lambda x, y: qp.qp_layer(
+        self.osqp_layer = lambda x, y: qp.qp_layer(
             x,
             y,
             equaility_functions,
@@ -84,48 +74,65 @@ class ActorCriticNetwork(nn.Module):
             objective_functions,
             self.nodes,
         )
-        self.osqp_layer = jax.vmap(
-            qp_func,
-            in_axes=(0, 0),
-            out_axes=(0, 0, 0, 0),
-        )
 
-    # Embedded MPC Actor-Critic Network:
+    # Small Network: Performs the best/learns fastest out of ALL QP Layers...
     def model(self, x):
         range = 2.0
-        # Initial Conditions:
+
+        # QP Layer Inputs:
         initial_conditions = x
-        # Shared Layers:
-        x = self.dense_1(x)
-        x = nn.tanh(x)
-        x = self.dense_2(x)
-        x = nn.tanh(x)
-        # Policy Layer:
-        x = self.target_prediction(x)
-        target_position = 2 * nn.tanh(x)
-        pos, vel, acc, status = self.osqp_layer(
+        target_position = jnp.array([1.0])
+
+        # Shared Layers: QP
+        pos, vel, acc, obj_val, status = self.osqp_layer(
             initial_conditions, target_position
         )
-        y = self.dense_4(acc)
-        y = nn.tanh(y)
-        z = self.dense_5(acc)
-        z = nn.tanh(z)
-        # Value Layer
-        w = self.dense_6(x)
-        w = nn.tanh(w)
-        w = self.dense_7(w)
-        w = nn.tanh(w)
+        trajectory = jnp.vstack([pos, vel, acc])
+        # Change to Maximization Problem:
+        obj_val = jnp.expand_dims(-obj_val, axis=-1)
+
+        # Policy Layer:
+        y = self.dense_1(acc)
+        y = self.dense_2(y)
+        z = self.dense_3(acc)
+        z = self.dense_4(z)
+
+        # Value Layer:
+        w = self.dense_5(obj_val)
+        w = self.dense_6(w)
+
         # Output Layer:
         mean = self.mean_layer(y)
         mean = range * nn.tanh(mean)
         std = self.std_layer(z)
-        std = nn.softplus(std)  # std != 0
+        std = nn.softplus(std)
         values = self.value_layer(w)
-        return mean, std, values, status
+        return mean, std, values, trajectory, obj_val, status
+
+    # # Gutted Network: Does not perform well...
+    # def model(self, x):
+    #     range = 2.0
+    #     # QP Layer Inputs:
+    #     initial_conditions = x
+    #     target_position = jnp.array([1.0])
+    #     # Shared Layers: QP
+    #     pos, vel, acc, obj_val, status = self.osqp_layer(
+    #         initial_conditions, target_position
+    #     )
+    #     trajectory = jnp.vstack([pos, vel, acc])
+    #     # Change to Maximization Problem:
+    #     obj_val = jnp.expand_dims(-obj_val, axis=-1)
+    #     # Output Layer: Straight Forward Mappings
+    #     mean = self.mean_layer(acc)
+    #     mean = range * nn.tanh(mean)
+    #     std = self.std_layer(acc)
+    #     std = nn.softplus(std)
+    #     values = self.value_layer(obj_val)
+    #     return mean, std, values, trajectory, obj_val, status
 
     def __call__(self, x):
-        mean, std, values, status = self.model(x)
-        return mean, std, values, status
+        mean, std, values, trajectory, obj_val, status = self.model(x)
+        return mean, std, values, trajectory, obj_val, status
 
 
 class ActorCriticNetworkVmap(nn.Module):
@@ -134,10 +141,11 @@ class ActorCriticNetworkVmap(nn.Module):
     nodes: int
 
     def setup(self) -> None:
+        # Shared Params:
         self.model = nn.vmap(
             ActorCriticNetwork,
-            variable_axes={'params': 0},
-            split_rngs={'params': True},
+            variable_axes={'params': None},
+            split_rngs={'params': False},
             in_axes=0,
         )(
             action_space=self.action_space,
@@ -146,5 +154,5 @@ class ActorCriticNetworkVmap(nn.Module):
         )
 
     def __call__(self, x):
-        mean, std, values, status = self.model(x)
-        return mean, std, values, status
+        mean, std, values, trajectory, obj_val, status = self.model(x)
+        return mean, std, values, trajectory, obj_val, status

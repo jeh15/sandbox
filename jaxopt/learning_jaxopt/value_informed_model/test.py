@@ -11,7 +11,7 @@ from brax.envs import wrapper
 from brax.envs.env import Env
 
 
-import model_bounded as model
+import model
 import model_utilities
 import puck
 import custom_wrapper
@@ -124,16 +124,18 @@ def main(argv=None):
         actions_episode = []
         rewards_episode = []
         masks_episode = []
+        objective_value_history = []
         start_time = time.time()
         for environment_step in range(max_episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
-            mean, std, values, status = model_utilities.forward_pass(
+            mean, std, values, qp_output = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 states.obs,
             )
             # Make sure the QP Layer is solving:
+            trajectory, objective_value, status = qp_output
             assert (status.status).any()
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
@@ -153,6 +155,7 @@ def main(argv=None):
             masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
             states = next_states
             state_history.append(states)
+            objective_value_history.append(objective_value)
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
@@ -175,7 +178,7 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        _, _, values, status = jax.lax.stop_gradient(
+        _, _, values, qp_output = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -183,7 +186,13 @@ def main(argv=None):
             ),
         )
         # Make sure the QP Layer is solving:
+        trajectory, objective_value, status = qp_output
+        objective_value_history.append(objective_value)
         assert (status.status).any()
+
+        objective_value_history = jnp.swapaxes(
+            jnp.squeeze(jnp.asarray(objective_value_history)), axis1=1, axis2=0,
+        )
 
         # Calculate Advantage:
         values_episode = jnp.concatenate(
@@ -217,6 +226,22 @@ def main(argv=None):
             ),
         )
 
+        average_value = np.mean(
+            np.mean(
+                (values_episode),
+                axis=1,
+            ),
+            axis=0
+        )
+
+        average_cost = np.mean(
+            np.mean(
+                (objective_value_history),
+                axis=1,
+            ),
+            axis=0
+        )
+
         if average_reward >= best_reward:
             best_reward = average_reward
             best_iteration = iteration
@@ -230,7 +255,8 @@ def main(argv=None):
                 name=f'./videos/puck_training_{iteration}'
             )
 
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Average Objective Value: {average_cost} \t Elapsed Time: {time.time() - start_time}')
+        # print(f'Average Value: {average_value} \t Average Objective Value: {average_cost}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
@@ -239,7 +265,7 @@ def main(argv=None):
     state_history.append(states)
     for _ in range(max_episode_length):
         key, env_key = jax.random.split(env_key)
-        mean, std, values, status = jax.lax.stop_gradient(
+        mean, std, values, qp_output = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
@@ -247,6 +273,7 @@ def main(argv=None):
             )
         )
         # Make sure the QP Layer is solving:
+        trajectory, objective_value, status = qp_output
         assert (status.status).any()
         actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
