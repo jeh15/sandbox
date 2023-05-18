@@ -11,7 +11,7 @@ from brax.envs import wrapper
 from brax.envs.env import Env
 
 
-import model_base as model
+import model_bounded as model
 import model_utilities
 import puck
 import custom_wrapper
@@ -76,8 +76,8 @@ def main(argv=None):
 
     # Setup Gym Environment:
     num_envs = 32
-    max_episode_length = 200
-    training_length = 300
+    max_episode_length = 100
+    training_length = 2000
     env = create_environment(
         episode_length=max_episode_length,
         action_repeat=1,
@@ -116,6 +116,8 @@ def main(argv=None):
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
+        state_history = []
+        state_history.append(states)
         states_episode = []
         values_episode = []
         log_probability_episode = []
@@ -150,6 +152,7 @@ def main(argv=None):
             rewards_episode.append(jnp.squeeze(states.reward))
             masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
             states = next_states
+            state_history.append(states)
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
@@ -218,10 +221,19 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
+        if iteration % 25 == 0:
+            visualize_batches = 9
+            visualizer.generate_batch_video(
+                env=env,
+                states=state_history,
+                batch_size=visualize_batches,
+                name=f'./videos/puck_training_{iteration}'
+            )
+
         print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
-    
+
     state_history = []
     states = reset_fn(env_key)
     state_history.append(states)

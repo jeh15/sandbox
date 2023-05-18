@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from jaxopt import BoxOSQP
@@ -72,7 +73,7 @@ def inequality_constraints(
     ux = q[2, :]
 
     # State Limits:
-    position_limit = 10.0
+    position_limit = 5.0
     velocity_limit = 10.0
     force_limit = 10.0
     inequality_constraints = jnp.vstack(
@@ -106,7 +107,8 @@ def objective_function(
     ux = q[2, :]
 
     # Objective Function:
-    target_objective = jnp.sum((x - target_position) ** 2, axis=0)
+    weight = 10.0
+    target_objective = weight * jnp.sum((x - target_position) ** 2, axis=0)
     minimize_control = jnp.sum(ux ** 2, axis=0)
 
     objective_function = jnp.sum(
@@ -223,7 +225,7 @@ def qp_layer(
         primal_infeasible_tol=1e-3,
         dual_infeasible_tol=1e-3,
         rho_start=1e-2,
-        maxiter=100,
+        maxiter=400,
         tol=1e-2,
         verbose=0,
         jit=True,
@@ -240,4 +242,7 @@ def qp_layer(
     vel = sol.primal[0][nodes:-nodes]
     acc = sol.primal[0][-nodes:]
 
-    return pos, vel, acc, state
+    objective_value = objective_fn(sol.primal[0], target_position)
+
+    # return pos, vel, acc
+    return pos, vel, acc, objective_value, state

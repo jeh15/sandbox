@@ -56,7 +56,7 @@ def generate_batch_video(
         ax.hlines(0, lb, ub, colors='black', linewidth=0.75, linestyles='--', zorder=0)
 
     # Create video writer:
-    fps = 24
+    fps = 10
     rate = int(1.0 / (env.dt * fps))
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
