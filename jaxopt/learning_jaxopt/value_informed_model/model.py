@@ -75,7 +75,7 @@ class ActorCriticNetwork(nn.Module):
             self.nodes,
         )
 
-    # Small Network: Performs the best/learns fastest out of ALL QP Layers...
+    # Full Information Propogation Network:
     def model(self, x):
         range = 2.0
 
@@ -92,13 +92,15 @@ class ActorCriticNetwork(nn.Module):
         obj_val = jnp.expand_dims(-obj_val, axis=-1)
 
         # Policy Layer:
-        y = self.dense_1(acc)
+        policy_input = jnp.concatenate([pos, vel, acc], axis=0)
+        y = self.dense_1(policy_input)
         y = self.dense_2(y)
-        z = self.dense_3(acc)
+        z = self.dense_3(policy_input)
         z = self.dense_4(z)
 
         # Value Layer:
-        w = self.dense_5(obj_val)
+        value_input = jnp.concatenate([pos, vel, acc, obj_val], axis=0)
+        w = self.dense_5(value_input)
         w = self.dense_6(w)
 
         # Output Layer:
@@ -108,6 +110,40 @@ class ActorCriticNetwork(nn.Module):
         std = nn.softplus(std)
         values = self.value_layer(w)
         return mean, std, values, trajectory, obj_val, status
+
+    # # Small Network: Performs the best/learns fastest out of ALL QP Layers...
+    # def model(self, x):
+    #     range = 2.0
+
+    #     # QP Layer Inputs:
+    #     initial_conditions = x
+    #     target_position = jnp.array([1.0])
+
+    #     # Shared Layers: QP
+    #     pos, vel, acc, obj_val, status = self.osqp_layer(
+    #         initial_conditions, target_position
+    #     )
+    #     trajectory = jnp.vstack([pos, vel, acc])
+    #     # Change to Maximization Problem:
+    #     obj_val = jnp.expand_dims(-obj_val, axis=-1)
+
+    #     # Policy Layer:
+    #     y = self.dense_1(acc)
+    #     y = self.dense_2(y)
+    #     z = self.dense_3(acc)
+    #     z = self.dense_4(z)
+
+    #     # Value Layer:
+    #     w = self.dense_5(obj_val)
+    #     w = self.dense_6(w)
+
+    #     # Output Layer:
+    #     mean = self.mean_layer(y)
+    #     mean = range * nn.tanh(mean)
+    #     std = self.std_layer(z)
+    #     std = nn.softplus(std)
+    #     values = self.value_layer(w)
+    #     return mean, std, values, trajectory, obj_val, status
 
     # # Gutted Network: Does not perform well...
     # def model(self, x):
