@@ -107,15 +107,26 @@ def objective_function(
     ux = q[2, :]
 
     # Objective Function:
-    weight = 10.0
-    target_objective = weight * jnp.sum((x - target_position) ** 2, axis=0)
-    minimize_control = jnp.sum(ux ** 2, axis=0)
+    # weight = 10.0
+    target_objective = jnp.sum((x - target_position) ** 2, axis=0)
+
+    # target_objective = weight * jnp.sum((x - target_position) ** 2, axis=0)
+    # minimize_control = jnp.sum(ux ** 2, axis=0)
+
+    # objective_function = jnp.sum(
+    #     jnp.hstack(
+    #         [
+    #             target_objective,
+    #             minimize_control,
+    #         ],
+    #     ),
+    #     axis=0,
+    # )
 
     objective_function = jnp.sum(
         jnp.hstack(
             [
                 target_objective,
-                minimize_control,
             ],
         ),
         axis=0,

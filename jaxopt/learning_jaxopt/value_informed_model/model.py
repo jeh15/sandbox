@@ -170,6 +170,92 @@ class ActorCriticNetwork(nn.Module):
     #     values = self.value_layer(w)
     #     return mean, std, values, trajectory, obj_val, status
 
+    # Small Network: Nonlinear Policy + Value Layer -- More Information Propogation
+    def model(self, x):
+        range = 2.0
+
+        # QP Layer Inputs:
+        initial_conditions = x
+        target_position = jnp.array([1.0])
+
+        # Shared Layers: QP
+        pos, vel, acc, obj_val, status = self.osqp_layer(
+            initial_conditions, target_position
+        )
+        trajectory = jnp.vstack([pos, vel, acc])
+        # Change to Maximization Problem:
+        obj_val = jnp.expand_dims(-obj_val, axis=-1)
+
+        # Policy Layer: Nonlinear Function of Acceleration
+        # The pipeline that decides the mean should only be function of acceleration
+        y = self.dense_1(acc)
+        y = nn.tanh(y)
+        y = self.dense_2(y)
+        y = nn.tanh(y)
+        # Pipeline that decides std should have more information of the states
+        predicted_states = jnp.concatenate([pos, vel, acc], axis=0)
+        z = self.dense_3(predicted_states)
+        z = nn.tanh(z)
+        z = self.dense_4(z)
+        z = nn.tanh(z)
+
+        # Value Layer: Nonlinear Function of Objective Value
+        # Value function needs to be a function of states and objective value
+        value_layer_input = jnp.concatenate([predicted_states, obj_val], axis=0)
+        w = self.dense_5(value_layer_input)
+        w = nn.tanh(w)
+        w = self.dense_6(w)
+        w = nn.tanh(w)
+
+        # Output Layer:
+        mean = self.mean_layer(y)
+        mean = range * nn.tanh(mean)
+        std = self.std_layer(z)
+        std = nn.softplus(std)
+        values = self.value_layer(w)
+        return mean, std, values, trajectory, obj_val, status
+    
+    # # Small Network: Nonlinear Policy + Value Layer -> ~-29
+    # def model(self, x):
+    #     range = 2.0
+
+    #     # QP Layer Inputs:
+    #     initial_conditions = x
+    #     target_position = jnp.array([1.0])
+
+    #     # Shared Layers: QP
+    #     pos, vel, acc, obj_val, status = self.osqp_layer(
+    #         initial_conditions, target_position
+    #     )
+    #     trajectory = jnp.vstack([pos, vel, acc])
+    #     # Change to Maximization Problem:
+    #     obj_val = jnp.expand_dims(-obj_val, axis=-1)
+
+    #     # Policy Layer: Nonlinear Function of Acceleration
+    #     y = self.dense_1(acc)
+    #     y = nn.tanh(y)
+    #     y = self.dense_2(y)
+    #     y = nn.tanh(y)
+    #     z = self.dense_3(initial_conditions)
+    #     z = nn.tanh(z)
+    #     z = self.dense_4(z)
+    #     z = nn.tanh(z)
+
+    #     # Value Layer: Nonlinear Function of Objective Value
+    #     w = self.dense_5(obj_val)
+    #     w = nn.tanh(w)
+    #     w = self.dense_6(w)
+    #     w = nn.tanh(w)
+
+    #     # Output Layer:
+    #     mean = self.mean_layer(y)
+    #     mean = range * nn.tanh(mean)
+    #     std = self.std_layer(z)
+    #     std = nn.softplus(std)
+    #     values = self.value_layer(w)
+    #     return mean, std, values, trajectory, obj_val, status
+
+
     # # Small Network: Nonlinear Policy Layer
     # def model(self, x):
     #     range = 2.0
@@ -191,7 +277,7 @@ class ActorCriticNetwork(nn.Module):
     #     y = nn.tanh(y)
     #     y = self.dense_2(y)
     #     y = nn.tanh(y)
-    #     z = self.dense_3(acc)
+    #     z = self.dense_3(initial_conditions)
     #     z = nn.tanh(z)
     #     z = self.dense_4(z)
     #     z = nn.tanh(z)
@@ -208,41 +294,41 @@ class ActorCriticNetwork(nn.Module):
     #     values = self.value_layer(w)
     #     return mean, std, values, trajectory, obj_val, status
 
-    # Small Network: Linear Policy Layer
-    # Performs the best/learns fastest out of ALL QP Layers...
-    # (NOTE: Oops forgot to add activation functions... but it performed well with only linear approximations?)
-    def model(self, x):
-        range = 2.0
+    # # Small Network: Linear Policy Layer -> At worst performs same as nonlinear at best ~-17
+    # # Performs the best/learns fastest out of ALL QP Layers...
+    # # (NOTE: Oops forgot to add activation functions... but it performed well with only linear approximations?)
+    # def model(self, x):
+    #     range = 2.0
 
-        # QP Layer Inputs:
-        initial_conditions = x
-        target_position = jnp.array([1.0])
+    #     # QP Layer Inputs:
+    #     initial_conditions = x
+    #     target_position = jnp.array([1.0])
 
-        # Shared Layers: QP
-        pos, vel, acc, obj_val, status = self.osqp_layer(
-            initial_conditions, target_position
-        )
-        trajectory = jnp.vstack([pos, vel, acc])
-        # Change to Maximization Problem:
-        obj_val = jnp.expand_dims(-obj_val, axis=-1)
+    #     # Shared Layers: QP
+    #     pos, vel, acc, obj_val, status = self.osqp_layer(
+    #         initial_conditions, target_position
+    #     )
+    #     trajectory = jnp.vstack([pos, vel, acc])
+    #     # Change to Maximization Problem:
+    #     obj_val = jnp.expand_dims(-obj_val, axis=-1)
 
-        # Policy Layer: Linear Function of Acceleration -- This Performed better than the nonlinear function.
-        y = self.dense_1(acc)
-        y = self.dense_2(y)
-        z = self.dense_3(acc)
-        z = self.dense_4(z)
+    #     # Policy Layer: Linear Function of Acceleration -- This Performed better than the nonlinear function.
+    #     y = self.dense_1(acc)
+    #     y = self.dense_2(y)
+    #     z = self.dense_3(acc)
+    #     z = self.dense_4(z)
 
-        # Value Layer: Linear Function of Objective Value
-        w = self.dense_5(obj_val)
-        w = self.dense_6(w)
+    #     # Value Layer: Linear Function of Objective Value
+    #     w = self.dense_5(obj_val)
+    #     w = self.dense_6(w)
 
-        # Output Layer:
-        mean = self.mean_layer(y)
-        mean = range * nn.tanh(mean)
-        std = self.std_layer(z)
-        std = nn.softplus(std)
-        values = self.value_layer(w)
-        return mean, std, values, trajectory, obj_val, status
+    #     # Output Layer:
+    #     mean = self.mean_layer(y)
+    #     mean = range * nn.tanh(mean)
+    #     std = self.std_layer(z)
+    #     std = nn.softplus(std)
+    #     values = self.value_layer(w)
+    #     return mean, std, values, trajectory, obj_val, status
 
     # # Linear QP Network: Does not perform well...
     # def model(self, x):
