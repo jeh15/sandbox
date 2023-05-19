@@ -220,7 +220,7 @@ def main(argv=None):
         )
 
         average_reward = np.mean(
-            np.mean(
+            np.sum(
                 (rewards_episode),
                 axis=1,
             ),

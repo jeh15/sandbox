@@ -1,4 +1,3 @@
-"""Cart Pole environment."""
 import os
 import pathlib
 
