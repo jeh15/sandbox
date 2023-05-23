@@ -351,6 +351,7 @@ class ActorCriticNetwork(nn.Module):
     #     values = self.value_layer(obj_val)
     #     return mean, std, values, trajectory, obj_val, status
 
+
     def __call__(self, x):
         mean, std, values, trajectory, obj_val, status = self.model(x)
         return mean, std, values, trajectory, obj_val, status
