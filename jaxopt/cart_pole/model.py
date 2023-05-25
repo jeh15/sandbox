@@ -43,12 +43,6 @@ class ActorCriticNetwork(nn.Module):
             name='dense_6',
             dtype=dtype,
         )
-        # Used in Value Function Averaging
-        # self.dense_7 = nn.Dense(
-        #     features=features,
-        #     name='dense_7',
-        #     dtype=dtype,
-        # )
         self.mean_layer = nn.Dense(
             features=self.action_space,
             name='mean_layer',

@@ -2,8 +2,6 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-import qp
-
 
 class ActorCriticNetwork(nn.Module):
     action_space: int

@@ -16,6 +16,7 @@ import model_utilities_no_qp as model_utilities
 import puck
 import custom_wrapper
 import visualize_puck as visualizer
+import save_checkpoint
 
 
 def create_environment(
@@ -215,54 +216,21 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        if iteration % 25 == 0:
-            visualize_batches = 9
-            visualizer.generate_batch_video(
-                env=env,
-                states=state_history,
-                batch_size=visualize_batches,
-                name=f'./videos/puck_training_{iteration}'
-            )
+        # if iteration % 25 == 0:
+        #     visualize_batches = 9
+        #     visualizer.generate_batch_video(
+        #         env=env,
+        #         states=state_history,
+        #         batch_size=visualize_batches,
+        #         name=f'./videos/puck_training_{iteration}'
+        #     )
 
         print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Elapsed Time: {time.time() - start_time}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
-    state_history = []
-    states = reset_fn(env_key)
-    state_history.append(states)
-    for _ in range(max_episode_length):
-        key, env_key = jax.random.split(env_key)
-        mean, std, values = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                states.obs,
-            )
-        )
-        actions, _, _ = jax.lax.stop_gradient(
-            model_utilities.select_action(
-                mean,
-                std,
-                env_key,
-            )
-        )
-        states = jax.lax.stop_gradient(
-            step_fn(
-                states,
-                actions,
-                env_key,
-            )
-        )
-        state_history.append(states)
-
-    visualize_batches = 25
-    visualizer.generate_batch_video(
-        env=env,
-        states=state_history,
-        batch_size=visualize_batches,
-        name=f'./videos/puck_simulation_{iteration}'
-    )
+    # Checkpoint Model:
+    save_checkpoint.save_checkpoint(state=model_state, path='./checkpoints')
 
 
 if __name__ == '__main__':

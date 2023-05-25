@@ -68,8 +68,10 @@ $gum spin -s line --title "Installing Flax..." -- sh -c 'env/bin/pip install fla
 echo -e "$($gum style --italic --foreground 99 '    > Installed Flax')\n"
 $gum spin -s line --title "Installing Optax..." -- sh -c 'env/bin/pip install optax'
 echo -e "$($gum style --italic --foreground 99 '    > Installed Optax')\n"
-$gum spin -s line --title "Installing Optax..." -- sh -c 'env/bin/pip install jaxopt'
+$gum spin -s line --title "Installing JAXopt..." -- sh -c 'env/bin/pip install jaxopt'
 echo -e "$($gum style --italic --foreground 99 '    > Installed JAXopt')\n"
+$gum spin -s line --title "Installing Orbax..." -- sh -c 'env/bin/pip install orbax-checkpoint'
+echo -e "$($gum style --italic --foreground 99 '    > Installed Orbax')\n"
 $gum spin -s line --title "Installing matplotlib..." -- sh -c 'env/bin/pip install matplotlib'
 echo -e "$($gum style --italic --foreground 99 '    > Installed matplotlib')\n"
 $gum spin -s line --title "Installing tqdm..." -- sh -c 'env/bin/pip install tqdm'
