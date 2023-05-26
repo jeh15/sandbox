@@ -107,13 +107,11 @@ def objective_function(
 
     # Objective Function:
     target_objective = jnp.sum((x - target_position) ** 2, axis=0)
-    minimize_control = jnp.sum(ux ** 2, axis=0)
 
     objective_function = jnp.sum(
         jnp.hstack(
             [
                 target_objective,
-                minimize_control,
             ],
         ),
         axis=0,

@@ -9,7 +9,7 @@
 		<motor ctrlrange="-10 10"/>
 	</default>
 
-	<option gravity="0 0 -9.81" timestep="0.02" />
+	<option gravity="0 0 -9.81" timestep="0.05" />
 
     <size nstack="3000"/>
     
@@ -23,7 +23,7 @@
 
     <worldbody>
         <body name='cart' pos='0 0 0'>
-            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-2.4 2.4' damping='0.05'/>
+            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-5.0 5.0' damping='0.05'/>
             <geom name='cart_geom' type='box' pos='0 0 0' size='0.2 0.1 0.05'/>
             <body name='pole' pos='0 0 0'>
                 <joint name='revolute_joint' type='hinge' axis='0 1 0' damping='0.05'/>

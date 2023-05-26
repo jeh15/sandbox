@@ -6,13 +6,14 @@ from brax import base
 from brax.envs import env
 from brax.io import mjcf
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 
 class CartPole(env.PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
-        filename = r'cartpole_ppo.xml'
+        filename = r'cartpole_swing_up.xml'
         cwd_path = pathlib.PurePath(
             os.getcwd(),
         )
@@ -41,8 +42,8 @@ class CartPole(env.PipelineEnv):
         q = self.sys.init_q + jax.random.uniform(
             rng1,
             (self.sys.q_size(),),
-            minval=jnp.array([-eps, jnp.pi - eps]),
-            maxval=jnp.array([eps, jnp.pi + eps]),
+            minval=jnp.array([-eps, -eps]),
+            maxval=jnp.array([eps, eps]),
         )
         qd = jax.random.uniform(
             rng2,
@@ -54,7 +55,7 @@ class CartPole(env.PipelineEnv):
         obs = self._get_obs(pipeline_state)
         # Reward Function:
         reward = -jnp.cos(obs[1])
-        done = jnp.array(0, dtype=jnp.float32)
+        done = jnp.array(0, dtype=jnp.float64)
         metrics = {}
 
         return env.State(pipeline_state, obs, reward, done, metrics)
@@ -65,12 +66,9 @@ class CartPole(env.PipelineEnv):
         obs = self._get_obs(pipeline_state)
         # Reset Condition : If |x| >= 2.4
         x = jnp.abs(obs[0])
-        theta = jnp.abs(
-            jnp.abs(obs[1]) - jnp.pi
-        )
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 2.4, 1.0, 0.0),
+                jnp.where(x >= 5.0, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
@@ -91,5 +89,5 @@ class CartPole(env.PipelineEnv):
 
     def _get_obs(self, pipeline_state: base.State) -> jnp.ndarray:
         """Observe cartpole body position and velocities."""
-        # obs = [x, theta, dx, dtheta]
+        # obs -> [x, theta, dx, dtheta]
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd])

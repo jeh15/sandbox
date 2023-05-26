@@ -17,6 +17,7 @@ import model_utilities_no_qp as model_utilities
 import puck
 import custom_wrapper
 import visualize_puck as visualizer
+import qp
 
 
 def create_environment(
@@ -158,6 +159,14 @@ def main(argv=None):
     velocity_trajectory = np.asarray(velocity_trajectory)
     acceleration_trajectory = np.asarray(acceleration_trajectory)
 
+    # Check Objective Value:
+    objective_value = qp.objective_function(
+        q=np.concatenate([position_trajectory, velocity_trajectory, acceleration_trajectory], axis=0),
+        target_position=1.0,
+    )
+
+    print(f'Objective Value: {np.sum(objective_value)}')
+
     # Create plot handles for visualization:
     fig, axs = plt.subplots(3, 1)
     lb, ub = -5, 5
@@ -165,27 +174,27 @@ def main(argv=None):
 
     # Position Plot:
     axs[0].plot(time_vector, position_trajectory, color='royalblue')
-    axs[0].set_ylabel('Position (m)')
+    axs[0].set_ylabel('Position')
     axs[0].set_ylim([lb, ub])
     axs[0].set_xlim([0, max_episode_length*env.dt])
     axs[0].hlines(1, time_vector[0], time_vector[-1], colors='black', linewidth=0.75, linestyles='--')
 
     # Velocity Plot:
     axs[1].plot(time_vector, velocity_trajectory, color='limegreen')
-    axs[1].set_ylabel('Velocity (m/s)')
+    axs[1].set_ylabel('Velocity')
     axs[1].set_ylim([lb, ub])
     axs[1].set_xlim([0, max_episode_length*env.dt])
 
     # Acceleration Plot:
     axs[2].plot(time_vector, acceleration_trajectory, color='darkorange')
     axs[2].set_xlabel('Time (s)')
-    axs[2].set_ylabel('Acceleration (m/s^2)')
+    axs[2].set_ylabel('Acceleration')
     axs[2].set_ylim([lb, ub])
     axs[2].set_xlim([0, max_episode_length*env.dt])
 
     # Save Plot:
     fig.canvas.draw()
-    plt.savefig('./figures/puck_trajectory.png', dpi=300)
+    plt.savefig('./figures/puck_trajectory_25.png', dpi=300)
 
 
 if __name__ == '__main__':

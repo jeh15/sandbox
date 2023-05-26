@@ -76,7 +76,7 @@ def main(argv=None):
     best_iteration = 0
 
     # Setup Gym Environment:
-    num_envs = 32
+    num_envs = 1
     max_episode_length = 100
     training_length = 500
     env = create_environment(

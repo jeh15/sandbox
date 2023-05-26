@@ -20,6 +20,7 @@ from typing import Callable, Any
 from brax.envs import env as brax_env
 
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 

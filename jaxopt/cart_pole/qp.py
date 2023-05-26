@@ -5,7 +5,15 @@ from absl import app
 import numpy as np
 import jax
 import jax.numpy as jnp
+jax.config.update("jax_enable_x64", True)
 from jaxopt import BoxOSQP
+
+# Testing QP:
+from typing import Optional
+import cartpole
+import custom_wrapper
+from brax.envs import wrapper
+from brax.envs.env import Env
 
 
 @partial(jax.jit, static_argnames=['num_states', 'dt'])
@@ -65,7 +73,7 @@ def equality_constraints(
         dx[0] - initial_conditions[1],
         th[0] - initial_conditions[2],
         dth[0] - initial_conditions[3],
-    ], dtype=jnp.float32)
+    ], dtype=jnp.float64)
 
     # 2. Collocation Constraints:
     ddx = func_approximation(
@@ -264,7 +272,7 @@ def qp_layer(
     # Optimization Variables:
     setpoint = jnp.zeros(
         (num_states * nodes,),
-        dtype=jnp.float32,
+        dtype=jnp.float64,
     )
 
     # Get Linearizations:
@@ -442,27 +450,7 @@ def get_dynamics(
     return f_ddx, f_ddth
 
 
-def main(argv=None):
-    def f(x): return x[0] ** 2 + x[1] ** 2
-
-    jacobian = jax.jacfwd(f)(jnp.array([1., 1.], dtype=jnp.float32))
-    manual_tangets = jacobian @ jnp.array([[1., 0.], [0., 1.]])
-    primals, tangets = jax.jvp(f, ([1., 1.],), ([1., 1.],))
-    out, fjvp = jax.linearize(f, jnp.array([1., 1.]))
-
-    print("Manual Calculation:")
-    print(jacobian)
-    print(manual_tangets)
-
-    print("JVP Calculation:")
-    print(primals)
-    print(tangets)
-
-    print("Linearization Calculation:")
-    print(out)
-    print(fjvp(jnp.array([1., 0.])))
-    print(fjvp(jnp.array([0., 1.])))
-
+def linearization_test(argv=None):
     """
     Linearization:
     eq: p(x) = f(a) + f'(a)(x - a)
@@ -502,7 +490,7 @@ def main(argv=None):
 
     # Linearize Dynamics:
     num_vars = 5
-    linearization_point = jnp.ones((5, num_vars), dtype=jnp.float32)
+    linearization_point = jnp.ones((5, num_vars), dtype=jnp.float64)
 
     # Get Dynamics:
     f_ddx, f_ddth = get_dynamics(
@@ -527,5 +515,125 @@ def main(argv=None):
     print(linear_ddth)
 
 
+def mpc_test(argv=None):
+    def create_environment(
+        episode_length: int = 1000,
+        action_repeat: int = 1,
+        auto_reset: bool = True,
+        batch_size: Optional[int] = None,
+        **kwargs,
+    ) -> Env:
+        """Creates an environment from the registry.
+        Args:
+            episode_length: length of episode
+            action_repeat: how many repeated actions to take per environment step
+            auto_reset: whether to auto reset the environment after an episode is done
+            batch_size: the number of environments to batch together
+            **kwargs: keyword argments that get passed to the Env class constructor
+        Returns:
+            env: an environment
+        """
+        env = cartpole.CartPole(**kwargs)
+
+        if episode_length is not None:
+            env = wrapper.EpisodeWrapper(env, episode_length, action_repeat)
+        if batch_size:
+            env = wrapper.VmapWrapper(env, batch_size)
+        if auto_reset:
+            env = custom_wrapper.AutoResetWrapper(env)
+
+        return env
+
+    # QP Hyperparameters:
+    time_horizon = 0.1
+    nodes = 3
+    num_states = 5
+
+    # Setup QP:
+    equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
+        qp_preprocess(
+            time_horizon=time_horizon,
+            nodes=nodes,
+            num_states=num_states,
+            mass_cart=1.,
+            mass_pole=1.,
+            length=0.1,
+            gravity=9.81,
+        )
+    )
+
+    # Isolate Function:
+    solve_qp = lambda x, y, z: qp_layer(
+        x,
+        y,
+        z,
+        equaility_functions,
+        inequality_functions,
+        objective_functions,
+        linearized_dynamics,
+        nodes,
+        num_states,
+    )
+
+    # Create Environment:
+    episode_length = 500
+    env = create_environment(
+        episode_length=episode_length,
+        action_repeat=1,
+        auto_reset=True,
+        batch_size=1,
+    )
+    step_fn = jax.jit(env.step)
+    reset_fn = jax.jit(env.reset)
+
+    # Initialize RNG Keys:
+    key_seed = 42
+    initial_key = jax.random.PRNGKey(key_seed)
+    key, env_key = jax.random.split(initial_key)
+
+    # Run Simulation:
+    states = reset_fn(env_key)
+    target = jnp.array([-jnp.pi], dtype=jnp.float64)
+    initial_condition = np.squeeze(states.obs)
+    initial_condition = np.array([initial_condition[0], initial_condition[2], initial_condition[1], initial_condition[3]])
+    previous_trajectory = np.repeat(
+        a=np.expand_dims(
+            np.concatenate([initial_condition, np.array([0.0])]),
+            axis=0,
+        ),
+        repeats=nodes,
+        axis=0,
+    )
+    for _ in range(episode_length):
+        key, env_key = jax.random.split(env_key)
+        state_trajectory, objective_value, status = solve_qp(
+            initial_condition,
+            target,
+            previous_trajectory,
+        )
+        previous_trajectory = state_trajectory
+        # What is going on here?
+        action = np.expand_dims(
+            np.expand_dims(state_trajectory[-1, 0], axis=0),
+            axis=0,
+        )
+
+        # Make sure the QP Layer is solving:
+        assert (status.status).any()
+
+        states = step_fn(
+            states,
+            action,
+            env_key,
+        )
+        initial_condition = np.squeeze(states.obs)
+        initial_condition = np.array([
+            initial_condition[0],
+            initial_condition[2],
+            initial_condition[1],
+            initial_condition[3],
+        ])
+
+
 if __name__ == '__main__':
-    app.run(main)
+    app.run(mpc_test)
