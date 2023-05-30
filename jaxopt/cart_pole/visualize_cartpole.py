@@ -17,24 +17,38 @@ def generate_batch_video(
         name: str,
 ):
     # Subplot Layout: (Finds closest square)
-    layout = np.floor(
-        np.sqrt(batch_size)
-    ).astype(int)
+    if batch_size != 1:
+        layout = np.floor(
+            np.sqrt(batch_size)
+        ).astype(int)
+    else:
+        layout = 1
 
     # Create plot handles for visualization:
     fig, axes = plt.subplots(nrows=layout, ncols=layout)
 
     lb, ub = -2.4, 2.4
     plts = []
-    for ax in axes.flatten():
-        p, = ax.plot([], [], color='royalblue', linewidth=0.75, zorder=10)
+    if batch_size == 1:
+        p, = axes.plot([], [], color='royalblue', linewidth=0.75, zorder=10)
         plts.append(p)
-        ax.axis('equal')
-        ax.set_xlim([lb, ub])
-        ax.set_yticklabels([])
-        ax.set_xticklabels([])
-        ax.set_xticks([])
-        ax.set_yticks([])
+        axes.axis('equal')
+        axes.set_xlim([lb, ub])
+        axes.set_yticklabels([])
+        axes.set_xticklabels([])
+        axes.set_xticks([])
+        axes.set_yticks([])
+        axes = np.array([axes])
+    else:
+        for ax in axes.flatten():
+            p, = ax.plot([], [], color='royalblue', linewidth=0.75, zorder=10)
+            plts.append(p)
+            ax.axis('equal')
+            ax.set_xlim([lb, ub])
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
+            ax.set_xticks([])
+            ax.set_yticks([])
 
     fig.suptitle('Cart Pole Simulation:')
 
@@ -63,6 +77,8 @@ def generate_batch_video(
     # Create video writer:
     fps = 24
     rate = int(1.0 / (env.dt * fps))
+    if rate == 0:
+        rate = 1
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
     with writer_obj.saving(fig, name + ".mp4", 300):
