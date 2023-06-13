@@ -19,7 +19,7 @@ import osqp
 from scipy import sparse
 
 
-@partial(jax.jit, static_argnames=['num_states', 'dt'])
+# @partial(jax.jit, static_argnames=['num_states', 'dt'])
 def equality_constraints(
     q: jax.typing.ArrayLike,
     initial_conditions: jax.typing.ArrayLike,
@@ -112,7 +112,7 @@ def equality_constraints(
     return equality_constraint
 
 
-@partial(jax.jit, static_argnames=['num_states'])
+# @partial(jax.jit, static_argnames=['num_states'])
 def inequality_constraints(
     q: jax.Array,
     num_states: int,
@@ -142,12 +142,12 @@ def inequality_constraints(
     return inequality_constraints
 
 
-@partial(jax.jit, static_argnames=['num_states'])
+# @partial(jax.jit, static_argnames=['num_states'])
 def objective_function(
     q: jax.typing.ArrayLike,
     a: jax.typing.ArrayLike,
-    f_a: tuple[jax.typing.ArrayLike, jax.typing.ArrayLike],
-    df_dq: tuple[jax.typing.ArrayLike, jax.typing.ArrayLike],
+    f_a: tuple[jax.typing.ArrayLike, ...],
+    df_dq: tuple[jax.typing.ArrayLike, ...],
     num_states: int,
 ) -> jnp.ndarray:
     """
@@ -168,7 +168,7 @@ def objective_function(
         f = state + const
         return f
 
-    # Sort State Vector:
+    # Sort State Vector and Unpack:
     q = q.reshape((num_states, -1))
 
     # State Nodes:
@@ -178,13 +178,22 @@ def objective_function(
     dth = q[3, :]
     u = q[4, :]
 
+    # Linearization Terms:
+    f_a, = f_a
+    df_dq, = df_dq
+
     # Objective Function:
-    target_objective = jnp.sum((th - target_position) ** 2, axis=0)
+    obj_value = func_approximation(
+        x=q,
+        a=a,
+        f_a=f_a,
+        df_dq=df_dq,
+    )
 
     objective_function = jnp.sum(
         jnp.hstack(
             [
-                target_objective,
+                obj_value,
             ],
         ),
         axis=0,
@@ -206,7 +215,7 @@ def qp_preprocess(
     dt = time_horizon / (nodes - 1)
 
     # Get Dynamics:
-    f_ddx, f_ddth = get_dynamics(
+    f_ddx, f_ddth, f_obj = get_nonlinear_equations(
         mass_cart=mass_cart,
         mass_pole=mass_pole,
         length=length,
@@ -215,9 +224,9 @@ def qp_preprocess(
 
     # Vmapped Linearized Dynamics:
     linearized_functions = jax.vmap(
-        lambda x: linearize_dynamics(
+        lambda x: linearize_equations(
             q=x,
-            dynamics_eq=(f_ddx, f_ddth),
+            dynamics_eq=(f_ddx, f_ddth, f_obj),
             num_vars=num_states,
         ),
         in_axes=0,
@@ -239,9 +248,11 @@ def qp_preprocess(
         num_states=num_states,
     )
 
-    objective_func = lambda x, tp: objective_function(
+    objective_func = lambda x, a, f_a, df_dq: objective_function(
         q=x,
-        target_position=tp,
+        a=a,
+        f_a=f_a,
+        df_dq=df_dq,
         num_states=num_states,
     )
 
@@ -291,11 +302,14 @@ def qp_layer(
 
     # Get Linearizations:
     # previous_trajectory shape -> (nodes, num_states)
-    linear_ddx, linear_ddth = linearized_functions(previous_trajectory)
+    linear_ddx, linear_ddth, linear_obj = linearized_functions(
+        previous_trajectory,
+    )
     f_a_ddx, df_dq_ddx = linear_ddx
     f_a_ddth, df_dq_ddth = linear_ddth
+    f_a_obj, df_dq_obj = linear_obj
 
-    # Generate QP Matrices:
+    # Generate QP Matrices: START FROM HERE
     A_eq = A_eq_fn(
         setpoint,
         initial_conditions,
@@ -315,8 +329,24 @@ def qp_layer(
     b_ineq_lb = b_ineq_fn(setpoint)
     b_ineq_ub = -b_ineq_fn(setpoint)
 
-    H = sparse.csc_matrix(np.asarray(H_fn(setpoint, target_position)))
-    f = np.asarray(f_fn(setpoint, target_position))
+    H = sparse.csc_matrix(
+        np.asarray(
+            H_fn(
+                setpoint,
+                previous_trajectory,
+                (f_a_obj,),
+                (df_dq_obj,),
+            ),
+        ),
+    )
+    f = np.asarray(
+        f_fn(
+            setpoint,
+            previous_trajectory,
+            (f_a_obj,),
+            (df_dq_obj,),
+        ),
+    )
 
     A = sparse.csc_matrix(np.asarray(jnp.vstack(
         [A_eq, A_ineq],
@@ -356,15 +386,15 @@ def qp_layer(
     return state_trajectory, objective_value, status
 
 
-@partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
-def linearize_dynamics(
+# @partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
+def linearize_equations(
     q: jax.typing.ArrayLike,
     dynamics_eq: tuple[Callable, Callable, Callable],
     num_vars: int,
 ) -> jnp.ndarray:
     """
         q: Linearization point -> state order of [x, dx, th, dth, u]
-        dynamics_eq: isolated function handle for acceleration equations -> (ddx, ddth)
+        dynamics_eq: isolated function handle for equations -> (ddx, ddth, obj)
     """
     # Unpack Tuple:
     f_ddx, f_ddth, f_obj = dynamics_eq
@@ -400,7 +430,7 @@ def linearize_dynamics(
     return linear_ddx, linear_ddth, linear_obj
 
 
-def get_dynamics(
+def get_nonlinear_equations(
     mass_cart: float,
     mass_pole: float,
     length: float,
@@ -410,11 +440,11 @@ def get_dynamics(
     Creates isolated function handles for cart pole acceleration equations.
     """
     def ddx(
-            q: jax.typing.ArrayLike,
-            mass_cart: float,
-            mass_pole: float,
-            length: float,
-            gravity: float,
+        q: jax.typing.ArrayLike,
+        mass_cart: float,
+        mass_pole: float,
+        length: float,
+        gravity: float,
     ) -> jnp.ndarray:
         # States corresponding to the point of linearization:
         x = q[0]
@@ -430,11 +460,11 @@ def get_dynamics(
         return a + b + c
 
     def ddth(
-            q: jax.typing.ArrayLike,
-            mass_cart: float,
-            mass_pole: float,
-            length: float,
-            gravity: float,
+        q: jax.typing.ArrayLike,
+        mass_cart: float,
+        mass_pole: float,
+        length: float,
+        gravity: float,
     ) -> jnp.ndarray:
         # States corresponding to the point of linearization:
         x = q[0]
@@ -451,7 +481,7 @@ def get_dynamics(
 
     # Trivial but can be used later as a template:
     def obj_func(
-            q: jax.typing.ArrayLike,
+        q: jax.typing.ArrayLike,
     ) -> jnp.ndarray:
         x = q[0]
         dx = q[1]
