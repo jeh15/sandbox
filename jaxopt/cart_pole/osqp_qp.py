@@ -130,11 +130,21 @@ def inequality_constraints(
     # State Limits:
     position_limit = 5.0
     velocity_limit = 10.0
-    force_limit = 10.0
+    angular_velocity_limit = 10 * np.pi
+    force_limit = 10.0  # 1.0 is decent, 5.0 is good
+    # inequality_constraints = jnp.vstack(
+    #     [
+    #         [-x - position_limit],
+    #         [-dx - velocity_limit],
+    #         [-u - force_limit],
+    #     ],
+    # ).flatten()
+
     inequality_constraints = jnp.vstack(
         [
             [-x - position_limit],
             [-dx - velocity_limit],
+            [-dth - angular_velocity_limit],
             [-u - force_limit],
         ],
     ).flatten()
@@ -368,11 +378,13 @@ def qp_layer(
         l=lb,
         u=ub,
         rho=1e-2,
-        max_iter=2000,
+        max_iter=4000,
         eps_abs=1e-2,
         eps_prim_inf=1e-3,
         eps_dual_inf=1e-3,
+        delta=1e-6,
         polish=True,
+        polish_refine_iter=1000,
     )
     results = mp.solve()
 
@@ -498,6 +510,7 @@ def get_nonlinear_equations(
         length=length,
         gravity=gravity,
     )
+
     f_ddth = lambda x: ddth(
         x,
         mass_cart=mass_cart,
@@ -505,6 +518,7 @@ def get_nonlinear_equations(
         length=length,
         gravity=gravity,
     )
+
     f_obj = lambda x: obj_func(
         x,
     )
@@ -547,8 +561,8 @@ def mpc_test(argv=None):
         return env
 
     # QP Hyperparameters:
-    time_horizon = 0.5
-    nodes = 11
+    time_horizon = 0.5  # 0.5 is good
+    nodes = 51
     num_states = 5
 
     # Setup QP:
@@ -578,7 +592,7 @@ def mpc_test(argv=None):
     )
 
     # Create Environment:
-    episode_length = 100
+    episode_length = 300
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -593,10 +607,60 @@ def mpc_test(argv=None):
     initial_key = jax.random.PRNGKey(key_seed)
     key, env_key = jax.random.split(initial_key)
 
-    # Run Simulation:
+    # # Run Simulation:
+    # states = reset_fn(env_key)
+    # state_history = []
+    # state_history.append(states)
+    # target = jnp.array([-jnp.pi], dtype=jnp.float64)
+    # initial_condition = np.squeeze(states.obs)
+    # initial_condition = np.array([
+    #     initial_condition[0],
+    #     initial_condition[2],
+    #     initial_condition[1],
+    #     initial_condition[3],
+    # ])
+    # previous_trajectory = np.repeat(
+    #     a=np.expand_dims(
+    #         np.concatenate([initial_condition, np.array([0.0])]),
+    #         axis=0,
+    #     ),
+    #     repeats=nodes,
+    #     axis=0,
+    # )
+    # for _ in range(episode_length):
+    #     key, env_key = jax.random.split(env_key)
+    #     state_trajectory, objective_value, status = solve_qp(
+    #         initial_condition,
+    #         target,
+    #         previous_trajectory,
+    #     )
+    #     previous_trajectory = np.reshape(state_trajectory, (-1, num_states))
+    #     # What is going on here?
+    #     action = np.expand_dims(
+    #         np.expand_dims(state_trajectory[-1, 0], axis=0),
+    #         axis=0,
+    #     )
+
+    #     # Make sure the QP Layer is solving:
+    #     assert status == 1
+
+    #     states = step_fn(
+    #         states,
+    #         action,
+    #         env_key,
+    #     )
+    #     initial_condition = np.squeeze(states.obs)
+    #     initial_condition = np.array([
+    #         initial_condition[0],
+    #         initial_condition[2],
+    #         initial_condition[1],
+    #         initial_condition[3],
+    #     ])
+    #     state_history.append(states)
+
+    # Run Simulation: (NO BRAX)
     states = reset_fn(env_key)
     state_history = []
-    state_history.append(states)
     target = jnp.array([-jnp.pi], dtype=jnp.float64)
     initial_condition = np.squeeze(states.obs)
     initial_condition = np.array([
@@ -605,6 +669,7 @@ def mpc_test(argv=None):
         initial_condition[1],
         initial_condition[3],
     ])
+    state_history.append(initial_condition)
     previous_trajectory = np.repeat(
         a=np.expand_dims(
             np.concatenate([initial_condition, np.array([0.0])]),
@@ -614,37 +679,47 @@ def mpc_test(argv=None):
         axis=0,
     )
     for _ in range(episode_length):
-        key, env_key = jax.random.split(env_key)
         state_trajectory, objective_value, status = solve_qp(
             initial_condition,
             target,
             previous_trajectory,
         )
-        previous_trajectory = np.reshape(state_trajectory, (-1, num_states))
-        # What is going on here?
-        action = np.expand_dims(
-            np.expand_dims(state_trajectory[-1, 0], axis=0),
+
+        # Make sure the QP Layer is solving:
+        # assert status == 1
+        if status != 1:
+            break
+
+        previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
+
+        # Move to control node:
+        control_node = 1
+        buffer = np.repeat(
+            a=np.expand_dims(
+                previous_trajectory[-1, :],
+                axis=0,
+            ),
+            repeats=control_node,
+            axis=0,
+        )
+        previous_trajectory = np.concatenate(
+            [previous_trajectory[control_node:, :], buffer],
             axis=0,
         )
 
-        # Make sure the QP Layer is solving:
-        assert status == 1
-
-        states = step_fn(
-            states,
-            action,
-            env_key,
-        )
-        initial_condition = np.squeeze(states.obs)
         initial_condition = np.array([
-            initial_condition[0],
-            initial_condition[2],
-            initial_condition[1],
-            initial_condition[3],
+            previous_trajectory[0, 0],
+            previous_trajectory[0, 1],
+            previous_trajectory[0, 2],
+            previous_trajectory[0, 3],
         ])
-        state_history.append(states)
+        state_history.append(initial_condition)
 
-    visualizer.generate_batch_video(
+    # visualizer.generate_batch_video(
+    #     env=env, states=state_history, batch_size=1, name="cartpole.mp4"
+    # )
+
+    visualizer.__generate_video(
         env=env, states=state_history, batch_size=1, name="cartpole.mp4"
     )
 
