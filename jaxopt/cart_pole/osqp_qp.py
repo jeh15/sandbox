@@ -394,6 +394,7 @@ def qp_layer(
         eps_rel=1e-2,
         eps_prim_inf=1e-3,
         eps_dual_inf=1e-3,
+        check_termination=100,
         delta=1e-6,
         polish=True,
         polish_refine_iter=1000,
