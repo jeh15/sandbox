@@ -128,10 +128,21 @@ def inequality_constraints(
     u = q[4, :]
 
     # State Limits:
+    """
+        State Limits:
+        - Restricted Solution:
+            angular_velocity_limit = 8 * np.pi
+            force_limit = 1.0
+        - Unrestricted Solution:
+            angular_velocity_limit = 8 * np.pi
+            force_limit = 10.0
+    """
+
     position_limit = 5.0
     velocity_limit = 10.0
-    angular_velocity_limit = 10 * np.pi
+    angular_velocity_limit = 8 * np.pi  # 10 * np.pi is decent
     force_limit = 10.0  # 1.0 is decent, 5.0 is good
+
     # inequality_constraints = jnp.vstack(
     #     [
     #         [-x - position_limit],
@@ -380,6 +391,7 @@ def qp_layer(
         rho=1e-2,
         max_iter=4000,
         eps_abs=1e-2,
+        eps_rel=1e-2,
         eps_prim_inf=1e-3,
         eps_dual_inf=1e-3,
         delta=1e-6,
@@ -394,6 +406,8 @@ def qp_layer(
         status = 1
     else:
         status = 0
+
+    # assert status != 0
 
     return state_trajectory, objective_value, status
 
@@ -526,8 +540,13 @@ def get_nonlinear_equations(
     return f_ddx, f_ddth, f_obj
 
 
-def wrap_theta(th: jax.typing.ArrayLike) -> jnp.ndarray:
+def negative_wrap(th: jax.typing.ArrayLike) -> jnp.ndarray:
     th = th % (-2 * np.pi)
+    return th
+
+
+def positive_wrap(th: jax.typing.ArrayLike) -> jnp.ndarray:
+    th = th % (2 * np.pi)
     return th
 
 
@@ -561,8 +580,13 @@ def mpc_test(argv=None):
         return env
 
     # QP Hyperparameters:
-    time_horizon = 0.5  # 0.5 is good
-    nodes = 51
+    """
+        Good Parameters:
+            time_horizon = 0.2
+            nodes = 11
+    """
+    time_horizon = 0.2  # 0.5 is good
+    nodes = 11  # 51 is good
     num_states = 5
 
     # Setup QP:
@@ -720,7 +744,7 @@ def mpc_test(argv=None):
     # )
 
     visualizer.__generate_video(
-        env=env, states=state_history, batch_size=1, name="cartpole.mp4"
+        env=env, states=state_history, batch_size=1, name="cartpole"
     )
 
 
