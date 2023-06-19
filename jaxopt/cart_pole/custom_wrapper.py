@@ -17,7 +17,7 @@
 
 """Wrappers for Brax to support different upstream use cases."""
 from typing import Callable, Any
-from brax.envs import env as brax_env
+from brax.envs.base import State, Wrapper
 
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -28,19 +28,19 @@ def cond(pred, true_fun: Callable, false_fun: Callable, *operands: Any):
     return jax.lax.cond(pred, true_fun, false_fun, *operands)
 
 
-class AutoResetWrapper(brax_env.Wrapper):
+class AutoResetWrapper(Wrapper):
     """Automatically resets Brax envs that are done."""
 
-    def reset(self, rng: jax.typing.ArrayLike) -> brax_env.State:
+    def reset(self, rng: jax.typing.ArrayLike) -> State:
         state = self.env.reset(rng)
         return state
 
     def step(
         self,
-        state: brax_env.State,
+        state: State,
         action: jax.typing.ArrayLike,
         rng: jax.typing.ArrayLike,
-    ) -> brax_env.State:
+    ) -> State:
         if 'steps' in state.info:
             steps = state.info['steps']
             steps = jnp.where(state.done, jnp.zeros_like(steps), steps)

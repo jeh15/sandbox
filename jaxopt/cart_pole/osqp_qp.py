@@ -12,8 +12,8 @@ from jaxopt import BoxOSQP
 from typing import Optional
 import cartpole
 import custom_wrapper
-from brax.envs import wrapper
-from brax.envs.env import Env
+from brax.envs.wrappers import training as wrapper
+from brax.envs.base import Env
 import visualize_cartpole as visualizer
 import osqp
 from scipy import sparse

@@ -3,14 +3,14 @@ import os
 import pathlib
 
 from brax import base
-from brax.envs import env
+from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 
-class CartPole(env.PipelineEnv):
+class CartPole(PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
         filename = r'cartpole_swing_up.xml'
@@ -35,7 +35,7 @@ class CartPole(env.PipelineEnv):
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 
-    def reset(self, rng: jnp.ndarray) -> env.State:
+    def reset(self, rng: jnp.ndarray) -> State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
         eps = 0.05
@@ -58,9 +58,9 @@ class CartPole(env.PipelineEnv):
         done = jnp.array(0, dtype=jnp.float64)
         metrics = {}
 
-        return env.State(pipeline_state, obs, reward, done, metrics)
+        return State(pipeline_state, obs, reward, done, metrics)
 
-    def step(self, state: env.State, action: jnp.ndarray) -> env.State:
+    def step(self, state: State, action: jnp.ndarray) -> State:
         """Run one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
         obs = self._get_obs(pipeline_state)

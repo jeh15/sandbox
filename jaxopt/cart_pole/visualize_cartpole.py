@@ -1,5 +1,5 @@
 from typing import List
-from brax.envs import env
+from brax.envs.base import Env, State
 
 import numpy as np
 import numpy.typing as npt
@@ -12,8 +12,8 @@ import jax_quaternion as jqt
 
 
 def generate_batch_video(
-        env: env.Env,
-        states: List[env.State],
+        env: Env,
+        states: List[State],
         batch_size: int,
         name: str,
 ):
@@ -54,8 +54,8 @@ def generate_batch_video(
     fig.suptitle('Cart Pole Simulation:')
 
     # Initialize Patch: (Cart)
-    width = env.sys.geoms[0].halfsize[0][0]
-    height = env.sys.geoms[0].halfsize[0][2]
+    width = sys.geoms[0].halfsize[0][0]
+    height = sys.geoms[0].halfsize[0][2]
     radius = 0.01
     xy_cart = (0, 0)
     cart_patches = []
@@ -77,7 +77,7 @@ def generate_batch_video(
 
     # Create video writer:
     fps = 24
-    rate = int(1.0 / (env.dt * fps))
+    rate = int(1.0 / (dt * fps))
     if rate == 0:
         rate = 1
     writer_obj = FFMpegWriter(fps=fps)
@@ -96,8 +96,8 @@ def generate_batch_video(
 
 
 def generate_video(
-        env: env.Env,
-        states: List[env.State],
+        env: Env,
+        states: List[State],
         name: str,
 ):
     # Create plot handles for visualization:
@@ -115,8 +115,8 @@ def generate_video(
     ax.set_title('Cart Pole Simulation:')
 
     # Initialize Patch: (Cart)
-    width = env.sys.geoms[0].halfsize[0][0]
-    height = env.sys.geoms[0].halfsize[0][2]
+    width = sys.geoms[0].halfsize[0][0]
+    height = sys.geoms[0].halfsize[0][2]
     radius = 0.01
     xy_cart = (0, 0)
     cart_patch = Rectangle(
@@ -133,7 +133,7 @@ def generate_video(
 
     # Create video writer:
     fps = 24
-    rate = int(1.0 / (env.dt * fps))
+    rate = int(1.0 / (dt * fps))
     writer_obj = FFMpegWriter(fps=fps)
     video_length = len(states)
     with writer_obj.saving(fig, name + ".mp4", 300):
@@ -204,7 +204,7 @@ def _visualize_batch(fig, writer_obj, plts, patches, state, width, height):
 
 
 def __generate_video(
-    env: env.Env,
+    env: Env,
     states: list[npt.ArrayLike],
     batch_size: int,
     name: str,
@@ -246,8 +246,8 @@ def __generate_video(
     fig.suptitle('Cart Pole Simulation:')
 
     # Initialize Patch: (Cart)
-    width = env.sys.geoms[0].halfsize[0][0]
-    height = env.sys.geoms[0].halfsize[0][2]
+    width = sys.geoms[0].halfsize[0][0]
+    height = sys.geoms[0].halfsize[0][2]
     radius = 0.01
     xy_cart = (0, 0)
     cart_patches = []
@@ -269,7 +269,7 @@ def __generate_video(
 
     # Create video writer:
     fps = 24
-    rate = int(1.0 / (env.dt * fps))
+    rate = int(1.0 / (dt * fps))
     if rate == 0:
         rate = 1
     writer_obj = FFMpegWriter(fps=fps)

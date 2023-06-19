@@ -23,7 +23,8 @@ The CLI method depends on Charm's `gum` library (`setup.sh` installs `gum` to yo
 ```
 git clone https://github.com/jeh15/sandbox
 cd sandbox
-sudo ./setup.sh
+chmod +x setup.sh
+./setup.sh
 ```
 
 ## Manual Method:
