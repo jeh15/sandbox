@@ -1,11 +1,13 @@
 import os
+import io
+from PIL import Image
 from absl import app, flags
 
 import numpy as np
 import jax
 import jax.numpy as jnp
 import brax
-from brax.io import mjcf
+from brax.io import image, mjcf
 from brax.spring import pipeline
 
 import matplotlib.pyplot as plt
@@ -23,10 +25,21 @@ def visualize(fig, writer_obj, patch, state):
     return fig, writer_obj, patch
 
 
+def visualize_image(fig, ax, writer_obj, image_array):
+    # Write Image to axes:
+    ax.imshow(image_array, interpolation='nearest')
+    # Update Drawing:
+    fig.canvas.draw()
+    # Save Frame:
+    writer_obj.grab_frame()
+    return fig, ax, writer_obj
+
+
 def main(argv=None):
     # Load Mujoco model from xml file:
-    file_path = "./ball.xml"
-    ball = mjcf.load(path=file_path)
+    asset_path = "assets/ball.xml"
+    absolute_path = os.path.join(os.path.dirname(__file__), asset_path)
+    ball = mjcf.load(path=absolute_path)
 
     # Give Ball and Ground Elastic Properties:
     elasticity = 0.85
@@ -56,39 +69,76 @@ def main(argv=None):
         state = step_fn(ball, state, None)
         states.append(state)
 
-    # Create plot handles for visualization:
-    fig, ax = plt.subplots()
-    lb, ub = -5, 5
-    ax.axis('equal')
-    ax.set_xlim([lb, ub])
-    ax.set_xlabel('X')  # X Label
-    ax.set_ylabel('Z')  # Y Label
-    ax.set_title('Ball Simulation:')
-
-    # Ground:
-    ground = ax.hlines(0, lb, ub, colors='black')
-
-    # Ball patch:
-    ball_patch = Circle(
-        (state.x.pos[0][0], state.x.pos[0][-1]),
-        radius=ball.geoms[-1].radius[0],
-        color='cornflowerblue',
-        zorder=10,
+    # Create Camera Object:
+    width, height = 426, 240
+    midpoint = len(states) // 2
+    camera = image.get_camera(
+        sys=ball,
+        state=states[midpoint],
+        width=width,
+        height=height,
+        ssaa=10,
     )
-    ax.add_patch(ball_patch)
+
+    # Use Brax renderer to visualize:
+    image_array = []
+    for state in states:
+        im = image.render_array(
+            sys=ball,
+            state=state,
+            width=32,
+            height=32,
+            camera=camera,
+        )
+        image_array.append(im)
 
     # Create video writer:
+    fig, ax = plt.subplots()
     fps = 24
     rate = int(1.0 / (ball.dt * fps))
     writer_obj = FFMpegWriter(fps=fps)
     with writer_obj.saving(fig, "ball_simulation.mp4", 300):
         for simulation_step in range(0, simulation_length, rate):
-            fig, writer_obj, ball_patch = visualize(
+            fig, ax, writer_obj = visualize_image(
                 fig=fig,
+                ax=ax,
                 writer_obj=writer_obj,
-                patch=ball_patch,
-                state=states[simulation_step],
+                image_array=image_array[simulation_step],
             )
+
+    # # Create plot handles for visualization:
+    # fig, ax = plt.subplots()
+    # lb, ub = -5, 5
+    # ax.axis('equal')
+    # ax.set_xlim([lb, ub])
+    # ax.set_xlabel('X')  # X Label
+    # ax.set_ylabel('Z')  # Y Label
+    # ax.set_title('Ball Simulation:')
+
+    # # Ground:
+    # ground = ax.hlines(0, lb, ub, colors='black')
+
+    # # Ball patch:
+    # ball_patch = Circle(
+    #     (state.x.pos[0][0], state.x.pos[0][-1]),
+    #     radius=ball.geoms[-1].radius[0],
+    #     color='cornflowerblue',
+    #     zorder=10,
+    # )
+    # ax.add_patch(ball_patch)
+
+    # # Create video writer:
+    # fps = 24
+    # rate = int(1.0 / (ball.dt * fps))
+    # writer_obj = FFMpegWriter(fps=fps)
+    # with writer_obj.saving(fig, "ball_simulation.mp4", 300):
+    #     for simulation_step in range(0, simulation_length, rate):
+    #         fig, writer_obj, ball_patch = visualize(
+    #             fig=fig,
+    #             writer_obj=writer_obj,
+    #             patch=ball_patch,
+    #             state=states[simulation_step],
+    #         )
 
 
 if __name__ == '__main__':
