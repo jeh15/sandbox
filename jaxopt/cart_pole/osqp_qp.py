@@ -204,17 +204,27 @@ def objective_function(
     df_dq, = df_dq
 
     # Objective Function:
-    obj_value = func_approximation(
+    # Swing Up: Linearized cos(x)
+    obj_swing_up = func_approximation(
         x=q,
         a=a,
         f_a=f_a,
         df_dq=df_dq,
     )
+    # Minimize Control Input:
+    control_weight = 0.01
+    min_control = control_weight * jnp.sum(u ** 2, axis=0)
+    # Keep within bounds: (Does not work well) -- Try Slack Variable Method
+    position_weight = 1.0
+    slope_weight = 1.0
+    area_bound = 0.0
+    obj_area = position_weight * jnp.sum(slope_weight * x ** 2 - area_bound, axis=0)
 
     objective_function = jnp.sum(
         jnp.hstack(
             [
-                obj_value,
+                obj_swing_up,
+                min_control,
             ],
         ),
         axis=0,

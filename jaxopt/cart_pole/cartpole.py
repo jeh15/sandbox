@@ -26,7 +26,7 @@ class CartPole(PipelineEnv):
         #             )
 
         # Better:
-        asset_path = r'cartpole_swing_up.xml'
+        asset_path = r'assets/cartpole_swing_up.xml'
         filepath = os.path.join(os.path.dirname(__file__), asset_path)
 
         sys = mjcf.load(filepath)
