@@ -147,8 +147,8 @@ def inequality_constraints(
     # Tuned for Simulation:
     position_limit = 5.0
     velocity_limit = 100.0
-    angular_velocity_limit = 8 * np.pi  # 10 * np.pi is decent
-    force_limit = 20.0  # 1.0 is decent, 5.0 is good
+    angular_velocity_limit = 10 * np.pi  # 10 * np.pi is decent
+    force_limit = 1.0  # 1.0 is decent, 5.0 is good
 
     # inequality_constraints = jnp.vstack(
     #     [
@@ -599,20 +599,31 @@ def mpc_test(argv=None):
 
         return env
 
+    # Create Environment:
+    episode_length = 300
+    env = create_environment(
+        episode_length=episode_length,
+        action_repeat=1,
+        auto_reset=True,
+        batch_size=1,
+    )
+    step_fn = jax.jit(env.step)
+    reset_fn = jax.jit(env.reset)
+
     # QP Hyperparameters:
     """
         Good Parameters:
             time_horizon = 0.2
             nodes = 11
     """
-    time_horizon = 0.5  # 0.2  # 0.5 is good
-    nodes = 26  # 11  # 51 is good
+    time_horizon = 0.2  # 0.2  # 0.5 is good
+    nodes = 21  # 11  # 51 is good
     num_states = 5
 
     # Setup QP:
     # Found via env.sys.link.inertia.mass
-    brax_cart_mass = 8.0
-    brax_pole_mass = 2.09
+    brax_cart_mass = env.sys.link.inertia.mass[0]
+    brax_pole_mass = env.sys.link.inertia.mass[1]
     equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
         qp_preprocess(
             time_horizon=time_horizon,
@@ -637,17 +648,6 @@ def mpc_test(argv=None):
         nodes,
         num_states,
     )
-
-    # Create Environment:
-    episode_length = 300
-    env = create_environment(
-        episode_length=episode_length,
-        action_repeat=1,
-        auto_reset=True,
-        batch_size=1,
-    )
-    step_fn = jax.jit(env.step)
-    reset_fn = jax.jit(env.reset)
 
     # Initialize RNG Keys:
     key_seed = 42
@@ -709,13 +709,8 @@ def mpc_test(argv=None):
     states = reset_fn(env_key)
     state_history = []
     target = jnp.array([-jnp.pi], dtype=jnp.float64)
-    initial_condition = np.squeeze(states.obs)
-    initial_condition = np.array([
-        initial_condition[0],
-        initial_condition[2],
-        initial_condition[1],
-        initial_condition[3],
-    ])
+    order_idx = np.array([0, 2, 1, 3])
+    initial_condition = np.squeeze(states.obs)[order_idx]
     state_history.append(states)
     # state_history.append(initial_condition)
     previous_trajectory = np.repeat(
@@ -741,42 +736,39 @@ def mpc_test(argv=None):
 
         previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
 
-        # Move to control node:
-        control_node = 1
+        # Simulate System:
+        control_nodes = 9
+        actions = previous_trajectory[:control_nodes, -1]
+        # actions = np.expand_dims(
+        #     np.expand_dims(previous_trajectory[:control_nodes, -1], axis=1),
+        #     axis=0,
+        # )
+
+        for action in actions:
+            # Expand Dimensions for vmap:
+            action = np.expand_dims(action, axis=0)
+            states = step_fn(
+                states,
+                action,
+                env_key,
+            )
+            state_history.append(states)
+
+        # Create Linearization Trajectory:
         buffer = np.repeat(
             a=np.expand_dims(
                 previous_trajectory[-1, :],
                 axis=0,
             ),
-            repeats=control_node,
+            repeats=control_nodes,
             axis=0,
         )
         previous_trajectory = np.concatenate(
-            [previous_trajectory[control_node:, :], buffer],
+            [previous_trajectory[control_nodes:, :], buffer],
             axis=0,
         )
-
-        # Provide action to environment:
-        action = np.expand_dims(
-            np.expand_dims(previous_trajectory[0, -1], axis=0),
-            axis=0,
-        )
-
-        states = step_fn(
-            states,
-            action,
-            env_key,
-        )
-        initial_condition = np.squeeze(states.obs)
-
-        initial_condition = np.array([
-            initial_condition[0],
-            initial_condition[2],
-            initial_condition[1],
-            initial_condition[3],
-        ])
+        initial_condition = np.squeeze(states.obs)[order_idx]
         previous_trajectory[0, :-1] = initial_condition
-        state_history.append(states)
         # state_history.append(initial_condition)
 
     visualizer.generate_batch_video(
