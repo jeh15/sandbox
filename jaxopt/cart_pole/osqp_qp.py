@@ -138,10 +138,17 @@ def inequality_constraints(
             force_limit = 10.0
     """
 
+    # No Simulation:
+    # position_limit = 5.0
+    # velocity_limit = 10.0
+    # angular_velocity_limit = 8 * np.pi  # 10 * np.pi is decent
+    # force_limit = 10.0  # 1.0 is decent, 5.0 is good
+
+    # Tuned for Simulation:
     position_limit = 5.0
-    velocity_limit = 10.0
+    velocity_limit = 100.0
     angular_velocity_limit = 8 * np.pi  # 10 * np.pi is decent
-    force_limit = 10.0  # 1.0 is decent, 5.0 is good
+    force_limit = 20.0  # 1.0 is decent, 5.0 is good
 
     # inequality_constraints = jnp.vstack(
     #     [
@@ -205,12 +212,14 @@ def objective_function(
 
     # Objective Function:
     # Swing Up: Linearized cos(x)
+    control_swing_up = 10.0
     obj_swing_up = func_approximation(
         x=q,
         a=a,
         f_a=f_a,
         df_dq=df_dq,
     )
+    obj_swing_up = control_swing_up * obj_swing_up
     # Minimize Control Input:
     control_weight = 0.01
     min_control = control_weight * jnp.sum(u ** 2, axis=0)
@@ -596,19 +605,22 @@ def mpc_test(argv=None):
             time_horizon = 0.2
             nodes = 11
     """
-    time_horizon = 0.2  # 0.5 is good
-    nodes = 11  # 51 is good
+    time_horizon = 0.5  # 0.2  # 0.5 is good
+    nodes = 26  # 11  # 51 is good
     num_states = 5
 
     # Setup QP:
+    # Found via env.sys.link.inertia.mass
+    brax_cart_mass = 8.0
+    brax_pole_mass = 2.09
     equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
         qp_preprocess(
             time_horizon=time_horizon,
             nodes=nodes,
             num_states=num_states,
-            mass_cart=1.,
-            mass_pole=1.,
-            length=0.1,
+            mass_cart=brax_cart_mass,
+            mass_pole=brax_pole_mass,
+            length=0.2,
             gravity=9.81,
         )
     )
@@ -693,7 +705,7 @@ def mpc_test(argv=None):
     #     ])
     #     state_history.append(states)
 
-    # Run Simulation: (NO BRAX)
+    # Run Simulation:
     states = reset_fn(env_key)
     state_history = []
     target = jnp.array([-jnp.pi], dtype=jnp.float64)
@@ -704,7 +716,8 @@ def mpc_test(argv=None):
         initial_condition[1],
         initial_condition[3],
     ])
-    state_history.append(initial_condition)
+    state_history.append(states)
+    # state_history.append(initial_condition)
     previous_trajectory = np.repeat(
         a=np.expand_dims(
             np.concatenate([initial_condition, np.array([0.0])]),
@@ -714,6 +727,7 @@ def mpc_test(argv=None):
         axis=0,
     )
     for _ in range(episode_length):
+        key, env_key = jax.random.split(env_key)
         state_trajectory, objective_value, status = solve_qp(
             initial_condition,
             target,
@@ -742,21 +756,36 @@ def mpc_test(argv=None):
             axis=0,
         )
 
+        # Provide action to environment:
+        action = np.expand_dims(
+            np.expand_dims(previous_trajectory[0, -1], axis=0),
+            axis=0,
+        )
+
+        states = step_fn(
+            states,
+            action,
+            env_key,
+        )
+        initial_condition = np.squeeze(states.obs)
+
         initial_condition = np.array([
-            previous_trajectory[0, 0],
-            previous_trajectory[0, 1],
-            previous_trajectory[0, 2],
-            previous_trajectory[0, 3],
+            initial_condition[0],
+            initial_condition[2],
+            initial_condition[1],
+            initial_condition[3],
         ])
-        state_history.append(initial_condition)
+        previous_trajectory[0, :-1] = initial_condition
+        state_history.append(states)
+        # state_history.append(initial_condition)
 
-    # visualizer.generate_batch_video(
-    #     env=env, states=state_history, batch_size=1, name="cartpole.mp4"
-    # )
-
-    visualizer.__generate_video(
+    visualizer.generate_batch_video(
         env=env, states=state_history, batch_size=1, name="cartpole"
     )
+
+    # visualizer.__generate_video(
+    #     env=env, states=state_history, batch_size=1, name="cartpole"
+    # )
 
 
 if __name__ == '__main__':
