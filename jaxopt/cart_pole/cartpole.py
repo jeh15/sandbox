@@ -74,7 +74,7 @@ class CartPole(PipelineEnv):
         x = jnp.abs(obs[0])
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 5.0, 1.0, 0.0),
+                jnp.where(x >= 4.0, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)

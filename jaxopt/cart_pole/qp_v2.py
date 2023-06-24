@@ -127,9 +127,16 @@ def inequality_constraints(
     dth = q[3, :]
     u = q[4, :]
 
+    # No Simulation:
+    # position_limit = 5.0
+    # velocity_limit = 10.0
+    # angular_velocity_limit = 8 * np.pi  # 10 * np.pi is decent
+    # force_limit = 10.0  # 1.0 is decent, 5.0 is good
+
     # Tuned for Simulation:
     position_limit = 5.0
-    force_limit = 0.05
+    angular_velocity_limit = 12 * np.pi
+    force_limit = 10.0
 
     inequality_constraints = jnp.vstack(
         [
@@ -190,9 +197,9 @@ def objective_function(
         f_a=f_a,
         df_dq=df_dq,
     )
-    obj_swing_up = control_swing_up * jnp.sum(obj_swing_up ** 2, axis=0)
+    obj_swing_up = control_swing_up * obj_swing_up
     # Minimize Control Input:
-    control_weight = 1.0
+    control_weight = 0.01
     min_control = control_weight * jnp.sum(u ** 2, axis=0)
     # Minimize State Deviation:
     state_weight = 1.0
@@ -287,7 +294,10 @@ def qp_preprocess(
 # @partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
 def qp_layer(
     initial_conditions: jax.typing.ArrayLike,
+    target_position: jax.typing.ArrayLike,
     previous_trajectory: jax.typing.ArrayLike,
+    primal_variables: jax.typing.ArrayLike,
+    dual_variables: jax.typing.ArrayLike,
     equaility_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
@@ -318,7 +328,7 @@ def qp_layer(
     f_a_ddth, df_dq_ddth = linear_ddth
     f_a_obj, df_dq_obj = linear_obj
 
-    # Generate QP Matrices:
+    # Generate QP Matrices: START FROM HERE
     A_eq = A_eq_fn(
         setpoint,
         initial_conditions,
@@ -338,69 +348,66 @@ def qp_layer(
     b_ineq_lb = b_ineq_fn(setpoint)
     b_ineq_ub = -b_ineq_fn(setpoint)
 
-    H = H_fn(
-        setpoint,
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
+    H = sparse.csc_matrix(
+        np.asarray(
+            H_fn(
+                setpoint,
+                previous_trajectory,
+                (f_a_obj,),
+                (df_dq_obj,),
+            ),
+        ),
     )
-    f = f_fn(
-        setpoint,
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
+    f = np.asarray(
+        f_fn(
+            setpoint,
+            previous_trajectory,
+            (f_a_obj,),
+            (df_dq_obj,),
+        ),
     )
 
-    A = jnp.vstack(
+    A = sparse.csc_matrix(np.asarray(jnp.vstack(
         [A_eq, A_ineq],
-    )
-    lb = jnp.concatenate(
+    )))
+    lb = np.asarray(jnp.concatenate(
         [b_eq, b_ineq_lb],
         axis=0,
-    )
-    ub = jnp.concatenate(
+    ))
+    ub = np.asarray(jnp.concatenate(
         [b_eq, b_ineq_ub],
         axis=0,
-    )
+    ))
 
-    # # class attributes (ignored by @dataclass)
-    # UNSOLVED          = 0  # stopping criterion not reached yet.
-    # SOLVED            = 1  # feasible solution found with satisfying precision.
-    # DUAL_INFEASIBLE   = 2  # infeasible dual (infeasible primal or unbounded primal).
-    # PRIMAL_INFEASIBLE = 3  # infeasible primal
-
-    qp = BoxOSQP(
-        momentum=1.6,
-        rho_start=1e-1,
-        primal_infeasible_tol=1e-2,
-        dual_infeasible_tol=1e-2,
-        maxiter=1000,
-        tol=1e-2,
-        termination_check_frequency=25,
-        verbose=0,
-        jit=True,
+    mp = osqp.OSQP()
+    mp.setup(
+        P=H,
+        q=f,
+        A=A,
+        l=lb,
+        u=ub,
+        rho=1e-2,
+        max_iter=10000,
+        eps_abs=1e-5,
+        eps_rel=1e-5,
+        eps_prim_inf=1e-4,
+        eps_dual_inf=1e-4,
+        check_termination=500,
+        delta=1e-6,
+        polish=True,
+        polish_refine_iter=1000,
     )
+    mp.warm_start(x=primal_variables, y=dual_variables)
+    results = mp.solve()
 
-    # Solve QP:
-    sol, state = qp.run(
-        params_obj=(H, f),
-        params_eq=A,
-        params_ineq=(lb, ub),
-    )
-
-    state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
-    objective_value = objective_fn(
-        sol.primal[0],
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
-    )
-    if state.status == 1:
+    state_trajectory = jnp.reshape(results.x, (num_states, -1))
+    objective_value = results.info.obj_val
+    if results.info.status_val == 1 or results.info.status_val == 2:
         status = 1
     else:
         status = 0
 
-    return state_trajectory, objective_value, status
+    return state_trajectory, objective_value, status, results.x, results.y
 
 
 # @partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
@@ -531,6 +538,16 @@ def get_nonlinear_equations(
     return f_ddx, f_ddth, f_obj
 
 
+def negative_wrap(th: jax.typing.ArrayLike) -> jnp.ndarray:
+    th = th % (-2 * np.pi)
+    return th
+
+
+def positive_wrap(th: jax.typing.ArrayLike) -> jnp.ndarray:
+    th = th % (2 * np.pi)
+    return th
+
+
 def mpc_test(argv=None):
     def create_environment(
         episode_length: int = 1000,
@@ -561,7 +578,7 @@ def mpc_test(argv=None):
         return env
 
     # Create Environment:
-    episode_length = 200
+    episode_length = 100
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -577,8 +594,8 @@ def mpc_test(argv=None):
             time_horizon = 0.2
             nodes = 11
     """
-    time_horizon = 0.1
-    nodes = 2
+    time_horizon = 0.2  # 0.2  # 0.5 is good
+    nodes = 21  # 11  # 51 is good
     num_states = 5
 
     # Setup QP:
@@ -598,9 +615,12 @@ def mpc_test(argv=None):
     )
 
     # Isolate Function:
-    solve_qp = lambda x, y: qp_layer(
+    solve_qp = lambda x, y, z, p, d: qp_layer(
         x,
         y,
+        z,
+        p,
+        d,
         equaility_functions,
         inequality_functions,
         objective_functions,
@@ -617,9 +637,11 @@ def mpc_test(argv=None):
     # Run Simulation:
     states = reset_fn(env_key)
     state_history = []
+    target = jnp.array([-jnp.pi], dtype=jnp.float64)
     order_idx = np.array([0, 2, 1, 3])
     initial_condition = np.squeeze(states.obs)[order_idx]
     state_history.append(states)
+    # state_history.append(initial_condition)
     previous_trajectory = np.repeat(
         a=np.expand_dims(
             np.concatenate([initial_condition, np.array([0.0])]),
@@ -628,41 +650,84 @@ def mpc_test(argv=None):
         repeats=nodes,
         axis=0,
     )
+    primal = np.zeros((nodes, num_states)).flatten()
+    dual = np.zeros((nodes, num_states + 1)).flatten()
     for _ in range(episode_length):
         key, env_key = jax.random.split(env_key)
-        state_trajectory, objective_value, status = solve_qp(
+        state_trajectory, objective_value, status, primal, dual = solve_qp(
             initial_condition,
+            target,
             previous_trajectory,
+            primal,
+            dual,
         )
 
         # Make sure the QP Layer is solving:
         if status != 1:
             break
 
-        previous_trajectory = state_trajectory
+        previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
 
         # Simulate System:
-        action = previous_trajectory[0, -1]
+        control_nodes = 10
+        actions = previous_trajectory[:control_nodes, -1]
 
-        action = np.expand_dims(action, axis=0)
-        states = step_fn(
-            states,
-            action,
-            env_key,
-        )
-        state_history.append(states)
+        for action in actions:
+            # Expand Dimensions for vmap:
+            action = np.expand_dims(action, axis=0)
+            states = step_fn(
+                states,
+                action,
+                env_key,
+            )
+            state_history.append(states)
 
-        # Resolve QP for better linearization:
+            # Resolve QP for better linearization:
+            initial_condition = np.squeeze(states.obs)[order_idx]
+            # Initial Condition w/ Control Input:
+            initial_point = np.expand_dims(
+                np.hstack(
+                    [initial_condition, previous_trajectory[1, -1]],
+                ),
+                axis=0,
+            )
+            # Create Buffer for final node:
+            buffer = np.repeat(
+                a=np.expand_dims(
+                    previous_trajectory[-1, :],
+                    axis=0,
+                ),
+                repeats=1,
+                axis=0,
+            )
+            # Construct new trajectory to linearize about:
+            previous_trajectory = np.concatenate(
+                [initial_point, previous_trajectory[2:, :], buffer],
+                axis=0,
+            )
+            state_trajectory, objective_value, status, primal, dual = solve_qp(
+                initial_condition,
+                target,
+                previous_trajectory,
+                primal,
+                dual,
+            )
+            previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
+            if status != 1:
+                break
+
+        if status != 1:
+            break
+
+        # Create Linearization Trajectory:
         initial_condition = np.squeeze(states.obs)[order_idx]
-
         # Initial Condition w/ Control Input:
         initial_point = np.expand_dims(
             np.hstack(
-                [initial_condition, previous_trajectory[-1, -1]],
+                [initial_condition, previous_trajectory[1, -1]],
             ),
             axis=0,
         )
-
         # Create Buffer for final node:
         buffer = np.repeat(
             a=np.expand_dims(
@@ -674,7 +739,7 @@ def mpc_test(argv=None):
         )
         # Construct new trajectory to linearize about:
         previous_trajectory = np.concatenate(
-            [initial_point, buffer],
+            [initial_point, previous_trajectory[2:, :], buffer],
             axis=0,
         )
 

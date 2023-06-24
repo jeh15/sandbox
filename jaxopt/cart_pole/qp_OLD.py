@@ -12,14 +12,12 @@ from jaxopt import BoxOSQP
 from typing import Optional
 import cartpole
 import custom_wrapper
-from brax.envs.wrappers import training as wrapper
-from brax.envs.base import Env
+from brax.envs import wrapper
+from brax.envs.env import Env
 import visualize_cartpole as visualizer
-import osqp
-from scipy import sparse
 
 
-# @partial(jax.jit, static_argnames=['num_states', 'dt'])
+@partial(jax.jit, static_argnames=['num_states', 'dt'])
 def equality_constraints(
     q: jax.typing.ArrayLike,
     initial_conditions: jax.typing.ArrayLike,
@@ -112,7 +110,7 @@ def equality_constraints(
     return equality_constraint
 
 
-# @partial(jax.jit, static_argnames=['num_states'])
+@partial(jax.jit, static_argnames=['num_states'])
 def inequality_constraints(
     q: jax.Array,
     num_states: int,
@@ -127,13 +125,16 @@ def inequality_constraints(
     dth = q[3, :]
     u = q[4, :]
 
-    # Tuned for Simulation:
+    # State Limits:
     position_limit = 5.0
-    force_limit = 0.05
-
+    velocity_limit = 10.0
+    force_limit = 10.0
+    angle_limit = 2 * jnp.pi
     inequality_constraints = jnp.vstack(
         [
             [-x - position_limit],
+            [-dx - velocity_limit],
+            [-th - angle_limit],
             [-u - force_limit],
         ],
     ).flatten()
@@ -141,33 +142,19 @@ def inequality_constraints(
     return inequality_constraints
 
 
-# @partial(jax.jit, static_argnames=['num_states'])
+@partial(jax.jit, static_argnames=['num_states'])
 def objective_function(
     q: jax.typing.ArrayLike,
-    a: jax.typing.ArrayLike,
-    f_a: tuple[jax.typing.ArrayLike, ...],
-    df_dq: tuple[jax.typing.ArrayLike, ...],
+    target_position: jax.typing.ArrayLike,
     num_states: int,
 ) -> jnp.ndarray:
     """
     Objective Function:
-        1. Linearized cos(x)
+        1. Position Target
+        2. Control Effort Objective
     """
 
-    # Function Approximation: TO DO
-    # cos(x) = cos(a) - sin(a) * (x - a)
-    def func_approximation(
-        x: jax.typing.ArrayLike,
-        a: jax.typing.ArrayLike,
-        f_a: jax.typing.ArrayLike,
-        df_dq: jax.typing.ArrayLike,
-    ) -> jnp.ndarray:
-        state = df_dq[:, 2] * x[2][:]
-        const = f_a[:] + df_dq[:, 2] * a[:, 2]
-        f = state + const
-        return f
-
-    # Sort State Vector and Unpack:
+    # Sort State Vector:
     q = q.reshape((num_states, -1))
 
     # State Nodes:
@@ -177,33 +164,13 @@ def objective_function(
     dth = q[3, :]
     u = q[4, :]
 
-    # Linearization Terms:
-    f_a, = f_a
-    df_dq, = df_dq
-
     # Objective Function:
-    # Swing Up: Linearized cos(x)
-    control_swing_up = 10.0
-    obj_swing_up = func_approximation(
-        x=q,
-        a=a,
-        f_a=f_a,
-        df_dq=df_dq,
-    )
-    obj_swing_up = control_swing_up * jnp.sum(obj_swing_up ** 2, axis=0)
-    # Minimize Control Input:
-    control_weight = 1.0
-    min_control = control_weight * jnp.sum(u ** 2, axis=0)
-    # Minimize State Deviation:
-    state_weight = 1.0
-    min_state = state_weight * jnp.sum(dth ** 2, axis=0)
+    target_objective = jnp.sum((th - target_position) ** 2, axis=0)
 
     objective_function = jnp.sum(
         jnp.hstack(
             [
-                obj_swing_up,
-                min_control,
-                min_state,
+                target_objective,
             ],
         ),
         axis=0,
@@ -221,11 +188,14 @@ def qp_preprocess(
     length: float,
     gravity: float,
 ) -> Callable:
+    # Print Statement:
+    print('Running Preprocess...')
+
     # Optimization Parameters:
     dt = time_horizon / (nodes - 1)
 
     # Get Dynamics:
-    f_ddx, f_ddth, f_obj = get_nonlinear_equations(
+    f_ddx, f_ddth = get_dynamics(
         mass_cart=mass_cart,
         mass_pole=mass_pole,
         length=length,
@@ -234,9 +204,9 @@ def qp_preprocess(
 
     # Vmapped Linearized Dynamics:
     linearized_functions = jax.vmap(
-        lambda x: linearize_equations(
+        lambda x: linearize_dynamics(
             q=x,
-            dynamics_eq=(f_ddx, f_ddth, f_obj),
+            dynamics_eq=(f_ddx, f_ddth),
             num_vars=num_states,
         ),
         in_axes=0,
@@ -258,11 +228,9 @@ def qp_preprocess(
         num_states=num_states,
     )
 
-    objective_func = lambda x, a, f_a, df_dq: objective_function(
+    objective_func = lambda x, tp: objective_function(
         q=x,
-        a=a,
-        f_a=f_a,
-        df_dq=df_dq,
+        target_position=tp,
         num_states=num_states,
     )
 
@@ -284,9 +252,10 @@ def qp_preprocess(
     return equaility_functions, inequality_functions, objective_functions, linearized_functions
 
 
-# @partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
+@partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
 def qp_layer(
     initial_conditions: jax.typing.ArrayLike,
+    target_position: jax.typing.ArrayLike,
     previous_trajectory: jax.typing.ArrayLike,
     equaility_functions: Callable,
     inequality_functions: Callable,
@@ -311,12 +280,9 @@ def qp_layer(
 
     # Get Linearizations:
     # previous_trajectory shape -> (nodes, num_states)
-    linear_ddx, linear_ddth, linear_obj = linearized_functions(
-        previous_trajectory,
-    )
+    linear_ddx, linear_ddth = linearized_functions(previous_trajectory)
     f_a_ddx, df_dq_ddx = linear_ddx
     f_a_ddth, df_dq_ddth = linear_ddth
-    f_a_obj, df_dq_obj = linear_obj
 
     # Generate QP Matrices:
     A_eq = A_eq_fn(
@@ -337,19 +303,12 @@ def qp_layer(
     A_ineq = A_ineq_fn(setpoint)
     b_ineq_lb = b_ineq_fn(setpoint)
     b_ineq_ub = -b_ineq_fn(setpoint)
+    # Edit for theta constraint: (-2pi, 0)
+    b_ineq_ub = b_ineq_ub.at[2*nodes:-nodes].set(0.0)
 
-    H = H_fn(
-        setpoint,
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
-    )
-    f = f_fn(
-        setpoint,
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
-    )
+
+    H = H_fn(setpoint, target_position)
+    f = f_fn(setpoint, target_position)
 
     A = jnp.vstack(
         [A_eq, A_ineq],
@@ -371,12 +330,11 @@ def qp_layer(
 
     qp = BoxOSQP(
         momentum=1.6,
-        rho_start=1e-1,
-        primal_infeasible_tol=1e-2,
-        dual_infeasible_tol=1e-2,
-        maxiter=1000,
+        primal_infeasible_tol=1e-3,
+        dual_infeasible_tol=1e-3,
+        rho_start=1e-2,
+        maxiter=2000,
         tol=1e-2,
-        termination_check_frequency=25,
         verbose=0,
         jit=True,
     )
@@ -388,33 +346,24 @@ def qp_layer(
         params_ineq=(lb, ub),
     )
 
-    state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
-    objective_value = objective_fn(
-        sol.primal[0],
-        previous_trajectory,
-        (f_a_obj,),
-        (df_dq_obj,),
-    )
-    if state.status == 1:
-        status = 1
-    else:
-        status = 0
+    state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1))
+    objective_value = objective_fn(sol.primal[0], target_position)
 
-    return state_trajectory, objective_value, status
+    return state_trajectory, objective_value, state
 
 
-# @partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
-def linearize_equations(
+@partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
+def linearize_dynamics(
     q: jax.typing.ArrayLike,
-    dynamics_eq: tuple[Callable, Callable, Callable],
+    dynamics_eq: tuple[Callable, Callable],
     num_vars: int,
 ) -> jnp.ndarray:
     """
         q: Linearization point -> state order of [x, dx, th, dth, u]
-        dynamics_eq: isolated function handle for equations -> (ddx, ddth, obj)
+        dynamics_eq: isolated function handle for acceleration equations -> (ddx, ddth)
     """
     # Unpack Tuple:
-    f_ddx, f_ddth, f_obj = dynamics_eq
+    f_ddx, f_ddth = dynamics_eq
 
     # Tangent Input: State Mask
     in_tangents = jnp.eye(num_vars)
@@ -433,35 +382,27 @@ def linearize_equations(
         out_axes=(None, 0)
     )((in_tangents,))
 
-    # Linearize objective function:
-    jvp_obj = partial(jax.jvp, f_obj, (q,))
-    f_a_obj, del_dobj_del_q = jax.vmap(
-        jvp_obj,
-        out_axes=(None, 0)
-    )((in_tangents,))
-
     linear_ddx = (f_a_ddx, del_ddx_del_q)
     linear_ddth = (f_a_ddth, del_ddth_del_q)
-    linear_obj = (f_a_obj, del_dobj_del_q)
 
-    return linear_ddx, linear_ddth, linear_obj
+    return linear_ddx, linear_ddth
 
 
-def get_nonlinear_equations(
+def get_dynamics(
     mass_cart: float,
     mass_pole: float,
     length: float,
     gravity: float,
-) -> tuple[Callable, Callable, Callable]:
+) -> tuple[Callable, Callable]:
     """
     Creates isolated function handles for cart pole acceleration equations.
     """
     def ddx(
-        q: jax.typing.ArrayLike,
-        mass_cart: float,
-        mass_pole: float,
-        length: float,
-        gravity: float,
+            q: jax.typing.ArrayLike,
+            mass_cart: float,
+            mass_pole: float,
+            length: float,
+            gravity: float,
     ) -> jnp.ndarray:
         # States corresponding to the point of linearization:
         x = q[0]
@@ -477,11 +418,11 @@ def get_nonlinear_equations(
         return a + b + c
 
     def ddth(
-        q: jax.typing.ArrayLike,
-        mass_cart: float,
-        mass_pole: float,
-        length: float,
-        gravity: float,
+            q: jax.typing.ArrayLike,
+            mass_cart: float,
+            mass_pole: float,
+            length: float,
+            gravity: float,
     ) -> jnp.ndarray:
         # States corresponding to the point of linearization:
         x = q[0]
@@ -496,17 +437,6 @@ def get_nonlinear_equations(
         c = -(mass_cart + mass_pole) * gravity * jnp.sin(th) / (mass_cart * length + mass_pole * length * jnp.sin(th) ** 2)
         return a + b + c
 
-    # Trivial but can be used later as a template:
-    def obj_func(
-        q: jax.typing.ArrayLike,
-    ) -> jnp.ndarray:
-        x = q[0]
-        dx = q[1]
-        th = q[2]
-        dth = q[3]
-        u = q[4]
-        return jnp.cos(th)
-
     # Isolated Functions:
     f_ddx = lambda x: ddx(
         x,
@@ -515,7 +445,6 @@ def get_nonlinear_equations(
         length=length,
         gravity=gravity,
     )
-
     f_ddth = lambda x: ddth(
         x,
         mass_cart=mass_cart,
@@ -524,11 +453,77 @@ def get_nonlinear_equations(
         gravity=gravity,
     )
 
-    f_obj = lambda x: obj_func(
-        x,
+    return f_ddx, f_ddth
+
+
+def wrap_theta(th: jax.typing.ArrayLike) -> jnp.ndarray:
+    th = th % (-2 * np.pi)
+    return th
+
+
+def linearization_test(argv=None):
+    """
+    Linearization:
+    eq: p(x) = f(a) + f'(a)(x - a)
+
+    Jax Terminology:
+    primal_in: Linearization point (a)
+    tangent_in: The vector that gets multiplied by the Jacobian at point (a)
+    primal_out: f(a)
+    tangent_out = jac(f)(a) @ tangent_in
+
+    What does this give us?
+    primal_out provides f(a) from the eq.
+    tangent_out can provide f'(a) if tangent_in is used as a masking vector.
+
+    Ex:
+    (Note: to evaluate multiple derivatives, the input needs to be a vector)
+
+    Linearize the following function at point (1, 1):
+    f(x) = x[0]^2 + x[1]^2
+    a = (1., 1.)
+
+    Solution:
+    p(x) = f(a) + df/dx1(a)(x1 - a1) + df/dx2(a)(x2 - a2)
+
+    Calculations:
+    f(a) = 2.
+
+    jac(f) = [2x[0], 2x[1]]
+    jac(f)(a) = [2., 2.]
+
+    df/dx1(a) = jac(f)(a)[0] -> jac(f)(a) @ [1., 0.] = 2.
+    df/dx2(a) = jac(f)(a)[1] -> jac(f)(a) @ [0., 1.] = 2.
+
+    p(x) = 2. + 2.(x1 - 1.) + 2.(x2 - 1.)
+
+    """
+
+    # Linearize Dynamics:
+    num_vars = 5
+    linearization_point = jnp.ones((5, num_vars), dtype=jnp.float64)
+
+    # Get Dynamics:
+    f_ddx, f_ddth = get_dynamics(
+        mass_cart=1.,
+        mass_pole=1.,
+        length=1.,
+        gravity=9.81,
     )
 
-    return f_ddx, f_ddth, f_obj
+    # Linearize Dynamics:
+    linearized_functions = jax.vmap(
+        lambda x: linearize_dynamics(
+            q=x,
+            dynamics_eq=(f_ddx, f_ddth),
+            num_vars=num_vars,
+        ),
+        in_axes=0,
+    )
+
+    linear_ddx, linear_ddth = linearized_functions(linearization_point)
+    print(linear_ddx)
+    print(linear_ddth)
 
 
 def mpc_test(argv=None):
@@ -560,8 +555,39 @@ def mpc_test(argv=None):
 
         return env
 
+    # QP Hyperparameters:
+    time_horizon = 0.5
+    nodes = 11
+    num_states = 5
+
+    # Setup QP:
+    equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
+        qp_preprocess(
+            time_horizon=time_horizon,
+            nodes=nodes,
+            num_states=num_states,
+            mass_cart=1.,
+            mass_pole=1.,
+            length=0.1,
+            gravity=9.81,
+        )
+    )
+
+    # Isolate Function:
+    solve_qp = lambda x, y, z: qp_layer(
+        x,
+        y,
+        z,
+        equaility_functions,
+        inequality_functions,
+        objective_functions,
+        linearized_dynamics,
+        nodes,
+        num_states,
+    )
+
     # Create Environment:
-    episode_length = 200
+    episode_length = 100
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -571,44 +597,6 @@ def mpc_test(argv=None):
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
 
-    # QP Hyperparameters:
-    """
-        Good Parameters:
-            time_horizon = 0.2
-            nodes = 11
-    """
-    time_horizon = 0.1
-    nodes = 2
-    num_states = 5
-
-    # Setup QP:
-    # Found via env.sys.link.inertia.mass
-    brax_cart_mass = env.sys.link.inertia.mass[0]
-    brax_pole_mass = env.sys.link.inertia.mass[1]
-    equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
-        qp_preprocess(
-            time_horizon=time_horizon,
-            nodes=nodes,
-            num_states=num_states,
-            mass_cart=brax_cart_mass,
-            mass_pole=brax_pole_mass,
-            length=0.2/2,
-            gravity=9.81,
-        )
-    )
-
-    # Isolate Function:
-    solve_qp = lambda x, y: qp_layer(
-        x,
-        y,
-        equaility_functions,
-        inequality_functions,
-        objective_functions,
-        linearized_dynamics,
-        nodes,
-        num_states,
-    )
-
     # Initialize RNG Keys:
     key_seed = 42
     initial_key = jax.random.PRNGKey(key_seed)
@@ -617,9 +605,10 @@ def mpc_test(argv=None):
     # Run Simulation:
     states = reset_fn(env_key)
     state_history = []
-    order_idx = np.array([0, 2, 1, 3])
-    initial_condition = np.squeeze(states.obs)[order_idx]
     state_history.append(states)
+    target = jnp.array([-jnp.pi], dtype=jnp.float64)
+    initial_condition = np.squeeze(states.obs)
+    initial_condition = np.array([initial_condition[0], initial_condition[2], initial_condition[1], initial_condition[3]])
     previous_trajectory = np.repeat(
         a=np.expand_dims(
             np.concatenate([initial_condition, np.array([0.0])]),
@@ -632,54 +621,38 @@ def mpc_test(argv=None):
         key, env_key = jax.random.split(env_key)
         state_trajectory, objective_value, status = solve_qp(
             initial_condition,
+            target,
             previous_trajectory,
+        )
+        previous_trajectory = jnp.reshape(state_trajectory, (-1, num_states))
+        previous_trajectory = previous_trajectory.at[:, 2].set(
+            wrap_theta(previous_trajectory[:, 2]),
+        )
+        # What is going on here?
+        action = np.expand_dims(
+            np.expand_dims(state_trajectory[-1, 0], axis=0),
+            axis=0,
         )
 
         # Make sure the QP Layer is solving:
-        if status != 1:
-            break
+        # assert (status.status).any()
 
-        previous_trajectory = state_trajectory
-
-        # Simulate System:
-        action = previous_trajectory[0, -1]
-
-        action = np.expand_dims(action, axis=0)
         states = step_fn(
             states,
             action,
             env_key,
         )
+        initial_condition = np.squeeze(states.obs)
+        initial_condition = np.array([
+            initial_condition[0],
+            initial_condition[2],
+            wrap_theta(initial_condition[1]),
+            initial_condition[3],
+        ])
         state_history.append(states)
 
-        # Resolve QP for better linearization:
-        initial_condition = np.squeeze(states.obs)[order_idx]
-
-        # Initial Condition w/ Control Input:
-        initial_point = np.expand_dims(
-            np.hstack(
-                [initial_condition, previous_trajectory[-1, -1]],
-            ),
-            axis=0,
-        )
-
-        # Create Buffer for final node:
-        buffer = np.repeat(
-            a=np.expand_dims(
-                previous_trajectory[-1, :],
-                axis=0,
-            ),
-            repeats=1,
-            axis=0,
-        )
-        # Construct new trajectory to linearize about:
-        previous_trajectory = np.concatenate(
-            [initial_point, buffer],
-            axis=0,
-        )
-
     visualizer.generate_batch_video(
-        env=env, states=state_history, batch_size=1, name="cartpole"
+        env=env, states=state_history, batch_size=1, name="cartpole.mp4"
     )
 
 

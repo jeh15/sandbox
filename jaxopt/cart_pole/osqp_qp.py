@@ -158,11 +158,18 @@ def inequality_constraints(
     #     ],
     # ).flatten()
 
+    # inequality_constraints = jnp.vstack(
+    #     [
+    #         [-x - position_limit],
+    #         [-dx - velocity_limit],
+    #         [-dth - angular_velocity_limit],
+    #         [-u - force_limit],
+    #     ],
+    # ).flatten()
+
     inequality_constraints = jnp.vstack(
         [
             [-x - position_limit],
-            [-dx - velocity_limit],
-            [-dth - angular_velocity_limit],
             [-u - force_limit],
         ],
     ).flatten()
@@ -221,7 +228,7 @@ def objective_function(
     )
     obj_swing_up = control_swing_up * obj_swing_up
     # Minimize Control Input:
-    control_weight = 0.01
+    control_weight = 0.1
     min_control = control_weight * jnp.sum(u ** 2, axis=0)
     # Keep within bounds: (Does not work well) -- Try Slack Variable Method
     position_weight = 1.0
@@ -413,7 +420,7 @@ def qp_layer(
         eps_rel=1e-2,
         eps_prim_inf=1e-3,
         eps_dual_inf=1e-3,
-        check_termination=100,
+        check_termination=200,
         delta=1e-6,
         polish=True,
         polish_refine_iter=1000,
@@ -600,7 +607,7 @@ def mpc_test(argv=None):
         return env
 
     # Create Environment:
-    episode_length = 300
+    episode_length = 100
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -631,7 +638,7 @@ def mpc_test(argv=None):
             num_states=num_states,
             mass_cart=brax_cart_mass,
             mass_pole=brax_pole_mass,
-            length=0.2,
+            length=0.2/2,
             gravity=9.81,
         )
     )
@@ -737,7 +744,7 @@ def mpc_test(argv=None):
         previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
 
         # Simulate System:
-        control_nodes = 9
+        control_nodes = 10
         actions = previous_trajectory[:control_nodes, -1]
         # actions = np.expand_dims(
         #     np.expand_dims(previous_trajectory[:control_nodes, -1], axis=1),
@@ -754,21 +761,80 @@ def mpc_test(argv=None):
             )
             state_history.append(states)
 
+            # Resolve QP for better linearization:
+            initial_condition = np.squeeze(states.obs)[order_idx]
+            # Initial Condition w/ Control Input:
+            initial_point = np.expand_dims(
+                np.hstack(
+                    [initial_condition, previous_trajectory[1, -1]],
+                ),
+                axis=0,
+            )
+            # Create Buffer for final node:
+            buffer = np.repeat(
+                a=np.expand_dims(
+                    previous_trajectory[-1, :],
+                    axis=0,
+                ),
+                repeats=1,
+                axis=0,
+            )
+            # Construct new trajectory to linearize about:
+            previous_trajectory = np.concatenate(
+                [initial_point, previous_trajectory[2:, :], buffer],
+                axis=0,
+            )
+            state_trajectory, objective_value, status = solve_qp(
+                initial_condition,
+                target,
+                previous_trajectory,
+            )
+            previous_trajectory = np.reshape(state_trajectory, (num_states, -1)).T
+            if status != 1:
+                break
+
+        if status != 1:
+            break
+
         # Create Linearization Trajectory:
+        initial_condition = np.squeeze(states.obs)[order_idx]
+        # Initial Condition w/ Control Input:
+        initial_point = np.expand_dims(
+            np.hstack(
+                [initial_condition, previous_trajectory[1, -1]],
+            ),
+            axis=0,
+        )
+        # Create Buffer for final node:
         buffer = np.repeat(
             a=np.expand_dims(
                 previous_trajectory[-1, :],
                 axis=0,
             ),
-            repeats=control_nodes,
+            repeats=1,
             axis=0,
         )
+        # Construct new trajectory to linearize about:
         previous_trajectory = np.concatenate(
-            [previous_trajectory[control_nodes:, :], buffer],
+            [initial_point, previous_trajectory[2:, :], buffer],
             axis=0,
         )
-        initial_condition = np.squeeze(states.obs)[order_idx]
-        previous_trajectory[0, :-1] = initial_condition
+
+
+        # buffer = np.repeat(
+        #     a=np.expand_dims(
+        #         previous_trajectory[-1, :],
+        #         axis=0,
+        #     ),
+        #     repeats=control_nodes,
+        #     axis=0,
+        # )
+        # previous_trajectory = np.concatenate(
+        #     [previous_trajectory[control_nodes:, :], buffer],
+        #     axis=0,
+        # )
+        # initial_condition = np.squeeze(states.obs)[order_idx]
+        # previous_trajectory[0, :-1] = initial_condition
         # state_history.append(initial_condition)
 
     visualizer.generate_batch_video(
