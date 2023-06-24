@@ -7,15 +7,15 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax.training import train_state
-from brax.envs import wrapper
-from brax.envs.env import Env
+from brax.envs.wrappers import training as wrapper
+from brax.envs.base import Env
 
 
 import model
 import model_utilities
-import puck
+import cartpole
 import custom_wrapper
-import visualize_puck as visualizer
+import visualize_cartpole as visualizer
 
 
 def create_environment(
@@ -35,7 +35,7 @@ def create_environment(
     Returns:
         env: an environment
     """
-    env = puck.Puck(**kwargs)
+    env = cartpole.CartPole(**kwargs)
 
     if episode_length is not None:
         env = wrapper.EpisodeWrapper(env, episode_length, action_repeat)
@@ -74,12 +74,11 @@ def main(argv=None):
     best_reward = np.NINF
     best_iteration = 0
 
-    # Setup Gym Environment:
+    # Create Environment:
+    episode_length = 200
     num_envs = 1
-    max_episode_length = 100
-    training_length = 500
     env = create_environment(
-        episode_length=max_episode_length,
+        episode_length=episode_length,
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
@@ -91,15 +90,24 @@ def main(argv=None):
     initial_key = jax.random.PRNGKey(key_seed)
 
     # Vmap Network:
+    time_horizon = 0.1
+    nodes = 2
+    num_states = 5
+    gravity = 9.81
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
-        time_horizon=0.1,
-        nodes=3,
+        time_horizon=time_horizon,
+        nodes=nodes,
+        num_states=num_states,
+        mass_cart=env.sys.link.inertia.mass[0],
+        mass_pole=env.sys.link.inertia.mass[1],
+        length=env.sys.geoms[-1].length[0] / 2,
+        gravity=gravity,
     )
 
     initial_params = init_params(
         module=network,
-        input_size=(num_envs, env.observation_size),
+        input_size=(num_envs, env.observation_size + num_states * nodes),
         key=initial_key,
     )
 
@@ -113,6 +121,7 @@ def main(argv=None):
     del initial_params
 
     # Test Environment:
+    training_length = 100
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)

@@ -13,18 +13,6 @@ import jax.numpy as jnp
 class CartPole(PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
-        # Bad:
-        # filename = r'cartpole_swing_up.xml'
-        # cwd_path = pathlib.PurePath(
-        #     os.getcwd(),
-        # )
-        # for root, dirs, files in os.walk(cwd_path):
-        #     for name in files:
-        #         if name == filename and os.path.basename(root) == 'assets':
-        #             filepath = pathlib.PurePath(
-        #                 os.path.abspath(os.path.join(root, name)),
-        #             )
-
         # Better:
         asset_path = r'assets/cartpole_swing_up.xml'
         filepath = os.path.join(os.path.dirname(__file__), asset_path)

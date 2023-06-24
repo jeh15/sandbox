@@ -395,17 +395,10 @@ def qp_layer(
         (f_a_obj,),
         (df_dq_obj,),
     )
-    # With vmap w/o jit:
-    if state.status.val == 1:
+    if state.status == 1:
         status = 1
     else:
         status = 0
-
-    # # Without jit:
-    # if state.status == 1:
-    #     status = 1
-    # else:
-    #     status = 0
 
     return state_trajectory, objective_value, status
 
@@ -536,3 +529,159 @@ def get_nonlinear_equations(
     )
 
     return f_ddx, f_ddth, f_obj
+
+
+def mpc_test(argv=None):
+    def create_environment(
+        episode_length: int = 1000,
+        action_repeat: int = 1,
+        auto_reset: bool = True,
+        batch_size: Optional[int] = None,
+        **kwargs,
+    ) -> Env:
+        """Creates an environment from the registry.
+        Args:
+            episode_length: length of episode
+            action_repeat: how many repeated actions to take per environment step
+            auto_reset: whether to auto reset the environment after an episode is done
+            batch_size: the number of environments to batch together
+            **kwargs: keyword argments that get passed to the Env class constructor
+        Returns:
+            env: an environment
+        """
+        env = cartpole.CartPole(**kwargs)
+
+        if episode_length is not None:
+            env = wrapper.EpisodeWrapper(env, episode_length, action_repeat)
+        if batch_size:
+            env = wrapper.VmapWrapper(env, batch_size)
+        if auto_reset:
+            env = custom_wrapper.AutoResetWrapper(env)
+
+        return env
+
+    # Create Environment:
+    episode_length = 200
+    env = create_environment(
+        episode_length=episode_length,
+        action_repeat=1,
+        auto_reset=True,
+        batch_size=1,
+    )
+    step_fn = jax.jit(env.step)
+    reset_fn = jax.jit(env.reset)
+
+    # QP Hyperparameters:
+    """
+        Good Parameters:
+            time_horizon = 0.2
+            nodes = 11
+    """
+    time_horizon = 0.1
+    nodes = 2
+    num_states = 5
+
+    # Setup QP:
+    # Found via env.sys.link.inertia.mass
+    brax_cart_mass = env.sys.link.inertia.mass[0]
+    brax_pole_mass = env.sys.link.inertia.mass[1]
+    equaility_functions, inequality_functions, objective_functions, linearized_dynamics = (
+        qp_preprocess(
+            time_horizon=time_horizon,
+            nodes=nodes,
+            num_states=num_states,
+            mass_cart=brax_cart_mass,
+            mass_pole=brax_pole_mass,
+            length=0.2/2,
+            gravity=9.81,
+        )
+    )
+
+    # Isolate Function:
+    solve_qp = lambda x, y: qp_layer(
+        x,
+        y,
+        equaility_functions,
+        inequality_functions,
+        objective_functions,
+        linearized_dynamics,
+        nodes,
+        num_states,
+    )
+
+    # Initialize RNG Keys:
+    key_seed = 42
+    initial_key = jax.random.PRNGKey(key_seed)
+    key, env_key = jax.random.split(initial_key)
+
+    # Run Simulation:
+    states = reset_fn(env_key)
+    state_history = []
+    order_idx = np.array([0, 2, 1, 3])
+    initial_condition = np.squeeze(states.obs)[order_idx]
+    state_history.append(states)
+    previous_trajectory = np.repeat(
+        a=np.expand_dims(
+            np.concatenate([initial_condition, np.array([0.0])]),
+            axis=0,
+        ),
+        repeats=nodes,
+        axis=0,
+    )
+    for _ in range(episode_length):
+        key, env_key = jax.random.split(env_key)
+        state_trajectory, objective_value, status = solve_qp(
+            initial_condition,
+            previous_trajectory,
+        )
+
+        # Make sure the QP Layer is solving:
+        if status != 1:
+            break
+
+        previous_trajectory = state_trajectory
+
+        # Simulate System:
+        action = previous_trajectory[0, -1]
+
+        action = np.expand_dims(action, axis=0)
+        states = step_fn(
+            states,
+            action,
+            env_key,
+        )
+        state_history.append(states)
+
+        # Resolve QP for better linearization:
+        initial_condition = np.squeeze(states.obs)[order_idx]
+
+        # Initial Condition w/ Control Input:
+        initial_point = np.expand_dims(
+            np.hstack(
+                [initial_condition, previous_trajectory[-1, -1]],
+            ),
+            axis=0,
+        )
+
+        # Create Buffer for final node:
+        buffer = np.repeat(
+            a=np.expand_dims(
+                previous_trajectory[-1, :],
+                axis=0,
+            ),
+            repeats=1,
+            axis=0,
+        )
+        # Construct new trajectory to linearize about:
+        previous_trajectory = np.concatenate(
+            [initial_point, buffer],
+            axis=0,
+        )
+
+    visualizer.generate_batch_video(
+        env=env, states=state_history, batch_size=1, name="cartpole"
+    )
+
+
+if __name__ == '__main__':
+    app.run(mpc_test)
