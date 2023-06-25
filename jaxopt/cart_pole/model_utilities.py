@@ -11,8 +11,8 @@ import distrax
 def forward_pass(model_params, apply_fn, x):
     # Print Statement:
     print('Running Forward Pass...')
-    mean, std, values, trajectory, obj_val, status = apply_fn({'params': model_params}, x)
-    qp_output = trajectory, obj_val, status
+    mean, std, values, state_trajectory, objective_value, status = apply_fn({'params': model_params}, x)
+    qp_output = state_trajectory, objective_value, status
     return mean, std, values, qp_output
 
 

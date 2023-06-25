@@ -89,7 +89,7 @@ class ActorCriticNetwork(nn.Module):
 
     # Small Network:
     def model(self, x):
-        range_limit = 1.0
+        range_limit = 0.1
 
         # QP Layer Inputs:
         initial_condition = x[:4]

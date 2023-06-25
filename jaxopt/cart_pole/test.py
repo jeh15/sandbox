@@ -122,6 +122,7 @@ def main(argv=None):
 
     # Test Environment:
     training_length = 100
+    order_idx = np.array([0, 2, 1, 3])  # Reorder the state vector to be compatible with QP Layer
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
@@ -134,18 +135,30 @@ def main(argv=None):
         rewards_episode = []
         masks_episode = []
         objective_value_history = []
-        start_time = time.time()
-        for environment_step in range(max_episode_length):
+        initial_condition = np.expand_dims(
+            np.squeeze(states.obs)[order_idx],
+            axis=0,
+        )
+        linearization_trajectory = np.repeat(
+            a=np.concatenate(
+                [initial_condition, np.zeros((num_envs, 1))],
+                axis=-1,
+            ),
+            repeats=nodes,
+            axis=0,
+        )
+        model_input = jnp.concatenate([initial_condition, linearization_trajectory], axis=-1)
+        for environment_step in range(episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
             mean, std, values, qp_output = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
-                states.obs,
+                model_input,
             )
-            # Make sure the QP Layer is solving:
-            trajectory, objective_value, status = qp_output
-            assert (status.status).any()
+            # Unpack QP Output:
+            state_trajectory, objective_value, status = qp_output
+            assert status == 1
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
                 std,
@@ -162,9 +175,12 @@ def main(argv=None):
             actions_episode.append(jnp.squeeze(actions))
             rewards_episode.append(jnp.squeeze(states.reward))
             masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
+            objective_value_history.append(objective_value)
             states = next_states
             state_history.append(states)
-            objective_value_history.append(objective_value)
+            # Update Model Input:
+            initial_condition = jnp.squeeze(states.obs)[order_idx]
+            # linearization_trajectory = jnp.concatenate([initial_condition, )])
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
