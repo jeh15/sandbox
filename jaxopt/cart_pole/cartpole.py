@@ -1,4 +1,3 @@
-"""Cart Pole environment."""
 import os
 import pathlib
 
@@ -29,7 +28,7 @@ class CartPole(PipelineEnv):
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 
-    def reset(self, rng: jnp.ndarray) -> State:
+    def reset(self, rng: jax.typing.ArrayLike) -> State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
         eps = 0.001
@@ -54,7 +53,7 @@ class CartPole(PipelineEnv):
 
         return State(pipeline_state, obs, reward, done, metrics)
 
-    def step(self, state: State, action: jnp.ndarray) -> State:
+    def step(self, state: State, action: jax.typing.ArrayLike) -> State:
         """Run one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
         obs = self._get_obs(pipeline_state)

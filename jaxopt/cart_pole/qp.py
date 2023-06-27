@@ -15,8 +15,6 @@ import custom_wrapper
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 import visualize_cartpole as visualizer
-import osqp
-from scipy import sparse
 
 
 # @partial(jax.jit, static_argnames=['num_states', 'dt'])
@@ -374,7 +372,7 @@ def qp_layer(
         rho_start=1e-1,
         primal_infeasible_tol=1e-2,
         dual_infeasible_tol=1e-2,
-        maxiter=1000,
+        maxiter=4000,
         tol=1e-2,
         termination_check_frequency=25,
         verbose=0,
@@ -388,18 +386,20 @@ def qp_layer(
         params_ineq=(lb, ub),
     )
 
-    state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
+    # state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
+    state_trajectory = sol.primal[0]
     objective_value = objective_fn(
         sol.primal[0],
         previous_trajectory,
         (f_a_obj,),
         (df_dq_obj,),
     )
+
+    # When using vmap w/ jit:
+    status = True
+
     # With vmap w/o jit:
-    if state.status.val == 1:
-        status = 1
-    else:
-        status = 0
+    # status = jnp.array_equal(state.status.val, jnp.ones_like(state.status.val))
 
     # # Without jit:
     # if state.status == 1:

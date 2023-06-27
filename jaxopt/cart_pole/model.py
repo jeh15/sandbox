@@ -1,4 +1,5 @@
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from flax import linen as nn
 
@@ -16,8 +17,8 @@ class ActorCriticNetwork(nn.Module):
     gravity: float
 
     def setup(self):
-        dtype = jnp.float32
-        features = 64
+        dtype = jnp.float64
+        features = 128
         self.dense_1 = nn.Dense(
             features=features,
             name='dense_1',
@@ -122,7 +123,7 @@ class ActorCriticNetwork(nn.Module):
         mean = self.mean_layer(y)
         mean = range_limit * nn.tanh(mean)
         std = self.std_layer(z)
-        std = nn.softplus(std)
+        std = range_limit * nn.softplus(std)
         values = self.value_layer(w)
         return mean, std, values, state_trajectory, objective_value, status
 

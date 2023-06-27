@@ -2,6 +2,7 @@ from typing import Callable, Tuple
 import functools
 
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from flax import linen as nn
 import distrax
@@ -45,7 +46,7 @@ def calculate_advantage(rewards, values, mask, episode_length):
         error = rewards[i] + gamma * values[i+1] * mask[i] - values[i]
         gae = error + gamma * lam * mask[i] * gae
         advantage.append(gae)
-    advantage = jnp.array(advantage, dtype=jnp.float32)[::-1]
+    advantage = jnp.array(advantage, dtype=jnp.float64)[::-1]
     returns = advantage + values[:-1]
     return advantage, returns
 
@@ -54,7 +55,7 @@ def calculate_advantage(rewards, values, mask, episode_length):
 def loss_function(
     model_params,
     apply_fn,
-    states,
+    model_input,
     actions,
     advantages,
     returns,
@@ -70,17 +71,17 @@ def loss_function(
 
     # Forward Pass Rollout:
     # Change leading axis of scan arrays: redundant... maybe change test.py...
-    states = jnp.swapaxes(
-        jnp.asarray(states), axis1=1, axis2=0,
+    model_input = jnp.swapaxes(
+        jnp.asarray(model_input), axis1=1, axis2=0,
     )
     actions = jnp.swapaxes(
         jnp.asarray(actions), axis1=1, axis2=0,
     )
-    length = states.shape[0]
+    length = model_input.shape[0]
 
     def forward_pass_rollout(carry, xs):
-        states, actions = xs
-        mean, std, values, _ = forward_pass(model_params, apply_fn, states)
+        model_input, actions = xs
+        mean, std, values, _ = forward_pass(model_params, apply_fn, model_input)
         mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
         # Replay actions:
         log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
@@ -92,7 +93,7 @@ def loss_function(
     carry, data = jax.lax.scan(
         forward_pass_rollout,
         None,
-        (states, actions),
+        (model_input, actions),
         length,
     )
     values, log_probability, entropy = data
@@ -135,7 +136,7 @@ def loss_function(
 @jax.jit
 def train_step(
     model_state,
-    states,
+    model_input,
     actions,
     advantages,
     returns,
@@ -148,7 +149,7 @@ def train_step(
     loss, gradients = gradient_function(
         model_state.params,
         model_state.apply_fn,
-        states,
+        model_input,
         actions,
         advantages,
         returns,
