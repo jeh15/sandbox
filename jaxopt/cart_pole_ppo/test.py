@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 import jax
-jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import optax
 from flax.training import train_state
@@ -16,6 +15,8 @@ import model_utilities
 import cartpole
 import custom_wrapper
 import visualize_cartpole as visualizer
+
+jax.config.update("jax_enable_x64", True)
 
 
 def create_environment(
@@ -90,24 +91,13 @@ def main(argv=None):
     initial_key = jax.random.PRNGKey(key_seed)
 
     # Vmap Network:
-    time_horizon = 0.1
-    nodes = 2
-    num_states = 5
-    gravity = 9.81
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
-        time_horizon=time_horizon,
-        nodes=nodes,
-        num_states=num_states,
-        mass_cart=env.sys.link.inertia.mass[0],
-        mass_pole=env.sys.link.inertia.mass[1],
-        length=env.sys.geoms[-1].length[0] / 2,
-        gravity=gravity,
     )
 
     initial_params = init_params(
         module=network,
-        input_size=(num_envs, env.observation_size + num_states * nodes),
+        input_size=(num_envs, env.observation_size),
         key=initial_key,
     )
 
@@ -122,7 +112,6 @@ def main(argv=None):
 
     # Test Environment:
     training_length = 1000
-    order_idx = np.array([0, 2, 1, 3])  # Reorder the state vector to be compatible with QP Layer
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
@@ -135,31 +124,16 @@ def main(argv=None):
         actions_episode = []
         rewards_episode = []
         masks_episode = []
-        objective_value_history = []
-        initial_condition = states.obs[..., order_idx]
-        linearization_trajectory = np.repeat(
-            a=np.concatenate(
-                [initial_condition, np.zeros((num_envs, 1))],
-                axis=-1,
-            ),
-            repeats=nodes,
-            axis=0,
-        ).reshape((num_envs, -1))
-        model_input = jnp.concatenate(
-            [initial_condition, linearization_trajectory],
-            axis=-1,
-        )
         for environment_step in range(episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
+            model_input = states.obs
             mean, std, values, qp_output = model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 model_input,
             )
             # Unpack QP Output:
-            state_trajectory, objective_value, status = qp_output
-            assert status.all()
             actions, log_probability, entropy = model_utilities.select_action(
                 mean,
                 std,
@@ -176,24 +150,9 @@ def main(argv=None):
             actions_episode.append(jnp.squeeze(actions))
             rewards_episode.append(jnp.squeeze(states.reward))
             masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
-            objective_value_history.append(objective_value)
             model_input_episode.append(model_input)
             states = next_states
             state_history.append(states)
-            # Update Model Input:
-            initial_condition = states.obs[..., order_idx]
-            linearization_trajectory = jnp.concatenate(
-                [
-                    jnp.concatenate([initial_condition, actions], axis=-1),
-                    state_trajectory[..., num_states:],
-                ],
-                axis=-1,
-            )
-            model_input = jnp.concatenate(
-                [initial_condition, linearization_trajectory],
-                axis=-1,
-            )
-            # Break Point
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
@@ -219,20 +178,12 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        _, _, values, qp_output = jax.lax.stop_gradient(
+        _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 model_input,
             ),
-        )
-        # Make sure the QP Layer is solving:
-        trajectory, objective_value, status = qp_output
-        objective_value_history.append(objective_value)
-        assert status.all()
-
-        objective_value_history = jnp.swapaxes(
-            jnp.squeeze(jnp.asarray(objective_value_history)), axis1=1, axis2=0,
         )
 
         # Calculate Advantage:
@@ -275,14 +226,6 @@ def main(argv=None):
             axis=0
         )
 
-        average_cost = np.mean(
-            np.mean(
-                (objective_value_history),
-                axis=1,
-            ),
-            axis=0
-        )
-
         if average_reward >= best_reward:
             best_reward = average_reward
             best_iteration = iteration
@@ -296,38 +239,23 @@ def main(argv=None):
                 name=f'cartpole_training_{iteration}'
             )
 
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Average Objective Value: {average_cost}')
-        # print(f'Average Value: {average_value} \t Average Objective Value: {average_cost}')
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
     state_history = []
     states = reset_fn(env_key)
     state_history.append(states)
-    initial_condition = states.obs[..., order_idx]
-    linearization_trajectory = np.repeat(
-        a=np.concatenate(
-            [initial_condition, np.zeros((num_envs, 1))],
-            axis=-1,
-        ),
-        repeats=nodes,
-        axis=0,
-    ).reshape((num_envs, -1))
-    model_input = jnp.concatenate(
-        [initial_condition, linearization_trajectory],
-        axis=-1,
-    )
     for _ in range(episode_length):
         key, env_key = jax.random.split(env_key)
-        mean, std, values, qp_output = jax.lax.stop_gradient(
+        model_input = states.obs
+        mean, std, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
                 model_state.apply_fn,
                 model_input,
             )
         )
-        # Make sure the QP Layer is solving:
-        state_trajectory, objective_value, status = qp_output
         actions, _, _ = jax.lax.stop_gradient(
             model_utilities.select_action(
                 mean,
@@ -343,18 +271,6 @@ def main(argv=None):
             )
         )
         state_history.append(states)
-        initial_condition = states.obs[..., order_idx]
-        linearization_trajectory = jnp.concatenate(
-            [
-                jnp.concatenate([initial_condition, actions], axis=-1),
-                state_trajectory[..., num_states:],
-            ],
-            axis=-1,
-        )
-        model_input = jnp.concatenate(
-            [initial_condition, linearization_trajectory],
-            axis=-1,
-        )
 
     visualize_batches = 16
     visualizer.generate_batch_video(

@@ -12,9 +12,8 @@ import distrax
 def forward_pass(model_params, apply_fn, x):
     # Print Statement:
     print('Running Forward Pass...')
-    mean, std, values, state_trajectory, objective_value, status = apply_fn({'params': model_params}, x)
-    qp_output = state_trajectory, objective_value, status
-    return mean, std, values, qp_output
+    mean, std, values = apply_fn({'params': model_params}, x)
+    return mean, std, values
 
 
 @jax.jit
@@ -82,7 +81,7 @@ def loss_function(
     # This performs better?
     def forward_pass_rollout(carry, xs):
         model_input, actions = xs
-        mean, std, values, _ = forward_pass(model_params, apply_fn, model_input)
+        mean, std, values = forward_pass(model_params, apply_fn, model_input)
         mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
         # Replay actions:
         log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)

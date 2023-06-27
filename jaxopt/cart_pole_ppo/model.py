@@ -2,19 +2,11 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-import qp
-
 jax.config.update("jax_enable_x64", True)
+
 
 class ActorCriticNetwork(nn.Module):
     action_space: int
-    time_horizon: float
-    nodes: int
-    num_states: int
-    mass_cart: float
-    mass_pole: float
-    length: float
-    gravity: float
 
     def setup(self):
         dtype = jnp.float64
@@ -64,57 +56,25 @@ class ActorCriticNetwork(nn.Module):
             name='value_layer',
             dtype=dtype,
         )
-        # Setup QP:
-        equaility_functions, inequality_functions, objective_functions, linearized_functions = (
-            qp.qp_preprocess(
-                time_horizon=self.time_horizon,
-                nodes=self.nodes,
-                num_states=self.num_states,
-                mass_cart=self.mass_cart,
-                mass_pole=self.mass_pole,
-                length=self.length,
-                gravity=self.gravity,
-            )
-        )
-        # Isolate Function:
-        self.osqp_layer = lambda x, y: qp.qp_layer(
-            x,
-            y,
-            equaility_functions,
-            inequality_functions,
-            objective_functions,
-            linearized_functions,
-            self.nodes,
-            self.num_states,
-        )
 
     # Small Network:
     def model(self, x):
+        # Limit Output Range:
         range_limit = 0.1
 
-        # QP Layer Inputs:
-        initial_condition = x[:4]
-        previous_trajectory = jnp.reshape(x[4:], (self.num_states, -1)).T
-
-        # Shared Layers: QP
-        state_trajectory, objective_value, status = self.osqp_layer(
-            initial_condition,
-            previous_trajectory,
-        )
-
         # Policy Layer: Nonlinear Function of Acceleration
-        y = self.dense_1(state_trajectory)
+        y = self.dense_1(x)
         y = nn.tanh(y)
         y = self.dense_2(y)
         y = nn.tanh(y)
         # Pipeline that decides std should have more information of the states
-        z = self.dense_3(state_trajectory)
+        z = self.dense_3(x)
         z = nn.tanh(z)
         z = self.dense_4(z)
         z = nn.tanh(z)
 
         # Value Layer: Nonlinear Function of Objective Value
-        w = self.dense_5(state_trajectory)
+        w = self.dense_5(x)
         w = nn.tanh(w)
         w = self.dense_6(w)
         w = nn.tanh(w)
@@ -125,22 +85,15 @@ class ActorCriticNetwork(nn.Module):
         std = self.std_layer(z)
         std = range_limit * nn.softplus(std)
         values = self.value_layer(w)
-        return mean, std, values, state_trajectory, objective_value, status
+        return mean, std, values
 
     def __call__(self, x):
-        mean, std, values, state_trajectory, objective_value, status = self.model(x)
-        return mean, std, values, state_trajectory, objective_value, status
+        mean, std, values = self.model(x)
+        return mean, std, values
 
 
 class ActorCriticNetworkVmap(nn.Module):
     action_space: int
-    time_horizon: float
-    nodes: int
-    num_states: int
-    mass_cart: float
-    mass_pole: float
-    length: float
-    gravity: float
 
     def setup(self) -> None:
         # Shared Params:
@@ -151,15 +104,8 @@ class ActorCriticNetworkVmap(nn.Module):
             in_axes=0,
         )(
             action_space=self.action_space,
-            time_horizon=self.time_horizon,
-            nodes=self.nodes,
-            num_states=self.num_states,
-            mass_cart=self.mass_cart,
-            mass_pole=self.mass_pole,
-            length=self.length,
-            gravity=self.gravity,
         )
 
     def __call__(self, x):
-        mean, std, values, state_trajectory, objective_value, status = self.model(x)
-        return mean, std, values, state_trajectory, objective_value, status
+        mean, std, values = self.model(x)
+        return mean, std, values

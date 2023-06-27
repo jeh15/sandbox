@@ -6,6 +6,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
+import jaxopt
 from jaxopt import BoxOSQP
 
 # Testing QP:
@@ -15,8 +16,6 @@ import custom_wrapper
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 import visualize_cartpole as visualizer
-import osqp
-from scipy import sparse
 
 
 # @partial(jax.jit, static_argnames=['num_states', 'dt'])
@@ -288,6 +287,7 @@ def qp_preprocess(
 def qp_layer(
     initial_conditions: jax.typing.ArrayLike,
     previous_trajectory: jax.typing.ArrayLike,
+    initial_guess: jax.typing.ArrayLike,
     equaility_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
@@ -381,26 +381,35 @@ def qp_layer(
         jit=True,
     )
 
-    # Solve QP:
     sol, state = qp.run(
+        init_params=initial_guess,
         params_obj=(H, f),
         params_eq=A,
         params_ineq=(lb, ub),
     )
 
-    state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
+    # state_trajectory = jnp.reshape(sol.primal[0], (num_states, -1)).T
+    state_trajectory = sol.primal[0]
     objective_value = objective_fn(
         sol.primal[0],
         previous_trajectory,
         (f_a_obj,),
         (df_dq_obj,),
     )
+
+    # When using vmap w/ jit:
+    # status = True
+
+    # With vmap w/o jit:
+    # status = jnp.array_equal(state.status.val, jnp.ones_like(state.status.val))
+
+    # Without jit:
     if state.status == 1:
         status = 1
     else:
         status = 0
 
-    return state_trajectory, objective_value, status
+    return state_trajectory, objective_value, status, sol
 
 
 # @partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
@@ -531,6 +540,105 @@ def get_nonlinear_equations(
     return f_ddx, f_ddth, f_obj
 
 
+# @partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
+def get_initial_guess(
+    initial_conditions: jax.typing.ArrayLike,
+    previous_trajectory: jax.typing.ArrayLike,
+    equaility_functions: Callable,
+    inequality_functions: Callable,
+    objective_functions: Callable,
+    linearized_functions: Callable,
+    nodes: int,
+    num_states: int,
+) -> jaxopt._src.base.KKTSolution:
+    # Unpack Functions:
+    b_eq_fn, A_eq_fn = equaility_functions
+    b_ineq_fn, A_ineq_fn = inequality_functions
+    objective_fn, H_fn, f_fn = objective_functions
+
+    # Optimization Variables:
+    setpoint = jnp.zeros(
+        (num_states * nodes,),
+        dtype=jnp.float64,
+    )
+
+    # Get Linearizations:
+    # previous_trajectory shape -> (nodes, num_states)
+    linear_ddx, linear_ddth, linear_obj = linearized_functions(
+        previous_trajectory,
+    )
+    f_a_ddx, df_dq_ddx = linear_ddx
+    f_a_ddth, df_dq_ddth = linear_ddth
+    f_a_obj, df_dq_obj = linear_obj
+
+    # Generate QP Matrices:
+    A_eq = A_eq_fn(
+        setpoint,
+        initial_conditions,
+        previous_trajectory,
+        (f_a_ddx, f_a_ddth),
+        (df_dq_ddx, df_dq_ddth),
+    )
+    b_eq = -b_eq_fn(
+        setpoint,
+        initial_conditions,
+        previous_trajectory,
+        (f_a_ddx, f_a_ddth),
+        (df_dq_ddx, df_dq_ddth),
+    )
+
+    A_ineq = A_ineq_fn(setpoint)
+    b_ineq_lb = b_ineq_fn(setpoint)
+    b_ineq_ub = -b_ineq_fn(setpoint)
+
+    H = H_fn(
+        setpoint,
+        previous_trajectory,
+        (f_a_obj,),
+        (df_dq_obj,),
+    )
+    f = f_fn(
+        setpoint,
+        previous_trajectory,
+        (f_a_obj,),
+        (df_dq_obj,),
+    )
+
+    A = jnp.vstack(
+        [A_eq, A_ineq],
+    )
+    lb = jnp.concatenate(
+        [b_eq, b_ineq_lb],
+        axis=0,
+    )
+    ub = jnp.concatenate(
+        [b_eq, b_ineq_ub],
+        axis=0,
+    )
+
+    # Construct QP:
+    qp = BoxOSQP(
+        momentum=1.6,
+        rho_start=1e-1,
+        primal_infeasible_tol=1e-2,
+        dual_infeasible_tol=1e-2,
+        maxiter=1000,
+        tol=1e-2,
+        termination_check_frequency=25,
+        verbose=0,
+        jit=True,
+    )
+
+    initial_guess = qp.init_params(
+        init_x=None,
+        params_obj=(H, f),
+        params_eq=A,
+        params_ineq=(lb, ub),
+    )
+
+    return initial_guess
+
+
 def mpc_test(argv=None):
     def create_environment(
         episode_length: int = 1000,
@@ -598,7 +706,19 @@ def mpc_test(argv=None):
     )
 
     # Isolate Function:
-    solve_qp = lambda x, y: qp_layer(
+    solve_qp = lambda x, y, z: qp_layer(
+        x,
+        y,
+        z,
+        equaility_functions,
+        inequality_functions,
+        objective_functions,
+        linearized_dynamics,
+        nodes,
+        num_states,
+    )
+
+    initial_guess_func = lambda x, y: get_initial_guess(
         x,
         y,
         equaility_functions,
@@ -628,21 +748,27 @@ def mpc_test(argv=None):
         repeats=nodes,
         axis=0,
     )
+    initial_guess = initial_guess_func(
+        initial_condition,
+        previous_trajectory,
+    )
     for _ in range(episode_length):
         key, env_key = jax.random.split(env_key)
-        state_trajectory, objective_value, status = solve_qp(
+        state_trajectory, objective_value, status, initial_guess = solve_qp(
             initial_condition,
             previous_trajectory,
+            initial_guess,
         )
 
         # Make sure the QP Layer is solving:
         if status != 1:
             break
 
-        previous_trajectory = state_trajectory
+        previous_trajectory = state_trajectory.reshape((nodes, -1))
 
         # Simulate System:
         action = previous_trajectory[0, -1]
+        print(action)
 
         action = np.expand_dims(action, axis=0)
         states = step_fn(

@@ -1,10 +1,10 @@
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from flax import linen as nn
 
-import qp
+import qp_ig as qp
 
-jax.config.update("jax_enable_x64", True)
 
 class ActorCriticNetwork(nn.Module):
     action_space: int
@@ -77,7 +77,20 @@ class ActorCriticNetwork(nn.Module):
             )
         )
         # Isolate Function:
-        self.osqp_layer = lambda x, y: qp.qp_layer(
+        self.osqp_layer = lambda x, y, z: qp.qp_layer(
+            x,
+            y,
+            z,
+            equaility_functions,
+            inequality_functions,
+            objective_functions,
+            linearized_functions,
+            self.nodes,
+            self.num_states,
+        )
+
+        # For warm start:
+        self.warm_start = lambda x, y: qp.get_initial_guess(
             x,
             y,
             equaility_functions,
@@ -86,6 +99,12 @@ class ActorCriticNetwork(nn.Module):
             linearized_functions,
             self.nodes,
             self.num_states,
+        )
+
+        # Initialize guess:
+        self.update_initial_guess(
+            jnp.zeros((self.num_states-1,)),
+            jnp.zeros((self.nodes, self.num_states)),
         )
 
     # Small Network:
@@ -97,10 +116,12 @@ class ActorCriticNetwork(nn.Module):
         previous_trajectory = jnp.reshape(x[4:], (self.num_states, -1)).T
 
         # Shared Layers: QP
-        state_trajectory, objective_value, status = self.osqp_layer(
+        state_trajectory, objective_value, status, initial_guess = self.osqp_layer(
             initial_condition,
             previous_trajectory,
+            self.initial_guess,
         )
+        self.initial_guess = initial_guess
 
         # Policy Layer: Nonlinear Function of Acceleration
         y = self.dense_1(state_trajectory)
@@ -130,6 +151,12 @@ class ActorCriticNetwork(nn.Module):
     def __call__(self, x):
         mean, std, values, state_trajectory, objective_value, status = self.model(x)
         return mean, std, values, state_trajectory, objective_value, status
+
+    def update_initial_guess(self, initial_condition, previous_trajectory):
+        self.initial_guess = self.warm_start(
+            initial_condition,
+            previous_trajectory,
+        )
 
 
 class ActorCriticNetworkVmap(nn.Module):
