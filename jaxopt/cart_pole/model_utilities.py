@@ -71,32 +71,40 @@ def loss_function(
 
     # Forward Pass Rollout:
     # Change leading axis of scan arrays: redundant... maybe change test.py...
-    model_input = jnp.swapaxes(
-        jnp.asarray(model_input), axis1=1, axis2=0,
-    )
-    actions = jnp.swapaxes(
-        jnp.asarray(actions), axis1=1, axis2=0,
-    )
-    length = model_input.shape[0]
+    # model_input = jnp.swapaxes(
+    #     jnp.asarray(model_input), axis1=1, axis2=0,
+    # )
+    # actions = jnp.swapaxes(
+    #     jnp.asarray(actions), axis1=1, axis2=0,
+    # )
+    # length = model_input.shape[0]
 
-    def forward_pass_rollout(carry, xs):
-        model_input, actions = xs
-        mean, std, values, _ = forward_pass(model_params, apply_fn, model_input)
-        mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
-        # Replay actions:
-        log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
-        carry = None
-        data = (values, log_probability, entropy)
-        return carry, data
+    # def forward_pass_rollout(carry, xs):
+    #     model_input, actions = xs
+    #     mean, std, values, _ = forward_pass(model_params, apply_fn, model_input)
+    #     mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
+    #     # Replay actions:
+    #     log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+    #     carry = None
+    #     data = (values, log_probability, entropy)
+    #     return carry, data
 
-    # Scan over replay:
-    carry, data = jax.lax.scan(
-        forward_pass_rollout,
-        None,
-        (model_input, actions),
-        length,
-    )
-    values, log_probability, entropy = data
+    # Parallelize instead of scan:
+    model_input = jnp.reshape(model_input, (-1, model_input.shape[-1]))
+    actions = jnp.reshape(actions, (-1, actions.shape[-1]))
+    mean, std, values, _ = forward_pass(model_params, apply_fn, model_input)
+    mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
+    log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+    # Needs to go back to (batch_size, episode_length)
+
+    # # Scan over replay:
+    # carry, data = jax.lax.scan(
+    #     forward_pass_rollout,
+    #     None,
+    #     (model_input, actions),
+    #     length,
+    # )
+    # values, log_probability, entropy = data
     values = jnp.swapaxes(
         jnp.asarray(values), axis1=1, axis2=0,
     )

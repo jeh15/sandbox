@@ -77,7 +77,7 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 128
+    num_envs = 2
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -106,9 +106,15 @@ def main(argv=None):
         gravity=gravity,
     )
 
+    # initial_params = init_params(
+    #     module=network,
+    #     input_size=(1, env.observation_size + num_states * nodes),
+    #     key=initial_key,
+    # )
+
     initial_params = init_params(
         module=network,
-        input_size=(num_envs, env.observation_size + num_states * nodes),
+        input_size=(1, env.observation_size + num_states * nodes),
         key=initial_key,
     )
 
