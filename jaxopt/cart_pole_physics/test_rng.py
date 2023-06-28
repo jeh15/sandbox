@@ -60,7 +60,10 @@ def init_params(module, input_size, key):
 
 def create_train_state(module, params, learning_rate):
     """Creates an initial `TrainState`."""
-    tx = optax.adam(
+    # tx = optax.adam(
+    #     learning_rate=learning_rate,
+    # )
+    tx = optax.amsgrad(
         learning_rate=learning_rate,
     )
     return train_state.TrainState.create(
@@ -100,6 +103,7 @@ def main(argv=None):
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
+        backend='generalized'
     )
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
@@ -124,14 +128,14 @@ def main(argv=None):
     )
 
     # Create a train state:
-    schedule = optax.warmup_cosine_decay_schedule(
-        init_value=0.001,
-        peak_value=0.1,
-        warmup_steps=50,
-        decay_steps=450,
-        end_value=0.0,
+    learning_rate = 1e-3
+    end_learning_rate = 1e-6
+    schedule = optax.linear_schedule(
+        init_value=learning_rate,
+        end_value=end_learning_rate,
+        transition_steps=200,
+        transition_begin=150,
     )
-    learning_rate = 1e-3  # 0.001
     model_state = create_train_state(
         module=network,
         params=initial_params,

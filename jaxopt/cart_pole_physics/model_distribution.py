@@ -97,6 +97,11 @@ class ActorCriticNetwork(nn.Module):
 
     # Small Network:
     def model(self, x, key):
+        """
+            Change Log:
+            softplus -> sigmoid
+            No longer scaling sigmoid
+        """
         # Limit Output Range:
         range_limit = 0.5
 
@@ -111,7 +116,7 @@ class ActorCriticNetwork(nn.Module):
         # Output Mean and Std:
         y = self.pipeline_layer_2(y)
         y_mu = range_limit * nn.tanh(y[0])
-        y_std = range_limit * nn.sigmoid(y[1])
+        y_std = nn.sigmoid(y[1])
         # Sample Action:
         probability_distribution = distrax.Normal(loc=y_mu, scale=y_std)
         y = probability_distribution.sample(seed=key)
@@ -123,7 +128,7 @@ class ActorCriticNetwork(nn.Module):
         z = nn.tanh(z)
         z = self.pipeline_layer_4(z)
         z_mu = range_limit * nn.tanh(z[0])
-        z_std = range_limit * nn.sigmoid(z[1])
+        z_std = nn.sigmoid(z[1])
         probability_distribution = distrax.Normal(loc=z_mu, scale=z_std)
         z = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, z)
@@ -134,7 +139,7 @@ class ActorCriticNetwork(nn.Module):
         i = nn.tanh(i)
         i = self.pipeline_layer_6(i)
         i_mu = range_limit * nn.tanh(i[0])
-        i_std = range_limit * nn.sigmoid(i[1])
+        i_std = nn.sigmoid(i[1])
         probability_distribution = distrax.Normal(loc=i_mu, scale=i_std)
         i = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, i)
