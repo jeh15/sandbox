@@ -58,15 +58,19 @@ def init_params(module, input_size, key):
     return params
 
 
-def create_train_state(module, params, learning_rate):
-    """Creates an initial `TrainState`."""
-    tx = optax.amsgrad(
-        learning_rate=learning_rate,
+@optax.inject_hyperparams
+def optimizer(learning_rate):
+    return optax.chain(
+        optax.amsgrad(
+            learning_rate=learning_rate,
+        ),
     )
+
+def create_train_state(module, params, optimizer):
     return train_state.TrainState.create(
         apply_fn=module.apply,
         params=params,
-        tx=tx,
+        tx=optimizer,
     )
 
 
@@ -118,10 +122,11 @@ def main(argv=None):
         transition_steps=350,
         transition_begin=150,
     )
+    tx = optimizer(learning_rate=schedule)
     model_state = create_train_state(
         module=network,
         params=initial_params,
-        learning_rate=schedule,
+        optimizer=tx,
     )
     del initial_params
 
@@ -265,7 +270,8 @@ def main(argv=None):
                 name=f'cartpole_training_{iteration}'
             )
 
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value}')
+        current_learning_rate = model_state.opt_state.hyperparams['learning_rate']
+        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Learning Rate: {current_learning_rate}')
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
