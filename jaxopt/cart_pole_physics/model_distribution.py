@@ -14,7 +14,7 @@ class ActorCriticNetwork(nn.Module):
 
     def setup(self):
         dtype = jnp.float64
-        features = 128
+        features = 128  # Works the best 128
         self.pipeline_layer_1 = nn.Dense(
             features=features,
             name='pipeline_layer_1',

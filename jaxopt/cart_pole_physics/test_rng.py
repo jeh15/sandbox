@@ -133,7 +133,7 @@ def main(argv=None):
     schedule = optax.linear_schedule(
         init_value=learning_rate,
         end_value=end_learning_rate,
-        transition_steps=200,
+        transition_steps=350,
         transition_begin=150,
     )
     model_state = create_train_state(
