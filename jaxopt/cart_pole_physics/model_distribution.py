@@ -3,13 +3,14 @@ import jax.numpy as jnp
 from flax import linen as nn
 import brax
 from brax.positional import pipeline
+import distrax
 
 jax.config.update("jax_enable_x64", True)
 
 
 class ActorCriticNetwork(nn.Module):
     action_space: int
-    env: brax.generalized.base.State
+    env: brax.positional.base.State
 
     def setup(self):
         dtype = jnp.float64
@@ -60,17 +61,17 @@ class ActorCriticNetwork(nn.Module):
             dtype=dtype,
         )
         self.pipeline_layer_2 = nn.Dense(
-            features=self.action_space,
+            features=2,
             name='pipeline_layer_2',
             dtype=dtype,
         )
         self.pipeline_layer_4 = nn.Dense(
-            features=self.action_space,
+            features=2,
             name='pipeline_layer_4',
             dtype=dtype,
         )
         self.pipeline_layer_6 = nn.Dense(
-            features=self.action_space,
+            features=2,
             name='pipeline_layer_6',
             dtype=dtype,
         )
@@ -95,9 +96,9 @@ class ActorCriticNetwork(nn.Module):
         self.step_pipeline = jax.jit(step_pipeline)
 
     # Small Network:
-    def model(self, x):
+    def model(self, x, key):
         # Limit Output Range:
-        range_limit = 1.0
+        range_limit = 0.5
 
         # Create Initial Pipeline State:
         q = x[:2]
@@ -107,7 +108,13 @@ class ActorCriticNetwork(nn.Module):
         # Pipeline Layer 1:
         y = self.pipeline_layer_1(x)
         y = nn.tanh(y)
+        # Output Mean and Std:
         y = self.pipeline_layer_2(y)
+        y_mu = range_limit * nn.tanh(y[0])
+        y_std = range_limit * nn.sigmoid(y[1])
+        # Sample Action:
+        probability_distribution = distrax.Normal(loc=y_mu, scale=y_std)
+        y = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, y)
         state_1 = jnp.concatenate([state.q, state.qd])
 
@@ -115,6 +122,10 @@ class ActorCriticNetwork(nn.Module):
         z = self.pipeline_layer_3(state_1)
         z = nn.tanh(z)
         z = self.pipeline_layer_4(z)
+        z_mu = range_limit * nn.tanh(z[0])
+        z_std = range_limit * nn.sigmoid(z[1])
+        probability_distribution = distrax.Normal(loc=z_mu, scale=z_std)
+        z = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, z)
         state_2 = jnp.concatenate([state.q, state.qd])
 
@@ -122,24 +133,27 @@ class ActorCriticNetwork(nn.Module):
         i = self.pipeline_layer_5(state_2)
         i = nn.tanh(i)
         i = self.pipeline_layer_6(i)
+        i_mu = range_limit * nn.tanh(i[0])
+        i_std = range_limit * nn.sigmoid(i[1])
+        probability_distribution = distrax.Normal(loc=i_mu, scale=i_std)
+        i = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, i)
         state_3 = jnp.concatenate([state.q, state.qd])
 
         # Trajectory:
         state_trajectory = jnp.concatenate([state_1, state_2, state_3])
 
-        # Policy Layer: Nonlinear Function of Acceleration
+        # Mean Layer:
         j = self.dense_1(state_trajectory)
         j = nn.tanh(j)
         j = self.dense_2(j)
         j = nn.tanh(j)
-        # Pipeline that decides std should have more information of the states
+        # Standard Deviation Layer:
         k = self.dense_3(state_trajectory)
         k = nn.tanh(k)
         k = self.dense_4(k)
         k = nn.tanh(k)
-
-        # Value Layer: Nonlinear Function of Objective Value
+        # Value Layer:
         w = self.dense_5(state_trajectory)
         w = nn.tanh(w)
         w = self.dense_6(w)
@@ -149,12 +163,12 @@ class ActorCriticNetwork(nn.Module):
         mean = self.mean_layer(j)
         mean = range_limit * nn.tanh(mean)
         std = self.std_layer(k)
-        std = range_limit * nn.softplus(std)
+        std = range_limit * nn.sigmoid(std)
         values = self.value_layer(w)
         return mean, std, values
 
-    def __call__(self, x):
-        mean, std, values = self.model(x)
+    def __call__(self, x, key):
+        mean, std, values = self.model(x, key)
         return mean, std, values
 
 
@@ -174,6 +188,6 @@ class ActorCriticNetworkVmap(nn.Module):
             env=self.env,
         )
 
-    def __call__(self, x):
-        mean, std, values = self.model(x)
+    def __call__(self, x, key):
+        mean, std, values = self.model(x, key)
         return mean, std, values

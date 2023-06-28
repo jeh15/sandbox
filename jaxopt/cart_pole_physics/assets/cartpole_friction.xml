@@ -1,13 +1,12 @@
 <mujoco model='cartpole'>
 
     <compiler inertiafromgeom='true'/>
-    <!-- <compiler inertiafromgeom='false'/> -->
     
     <default>
-		<joint armature="0" damping="0"/>
-		<geom contype="0" friction="0 0 0" />
+		<joint armature="0" damping="1"/>
+		<geom contype="0" friction="1 0.1 0.1" />
 		<tendon/>
-		<motor ctrlrange="-1 1"/>
+		<motor ctrlrange="-0.5 0.5"/>
 	</default>
 
 	<option gravity="0 0 -9.81" timestep="0.01" />
@@ -24,17 +23,17 @@
 
     <worldbody>
         <body name='cart' pos='0 0 0'>
-            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-5.0 5.0' damping='0.01'/>
+            <joint name='slider' type='slide' limited='true' pos='0 0 0' axis='1 0 0' range='-5.0 5.0' damping='0.05'/>
             <geom name='cart_geom' type='box' pos='0 0 0' size='0.2 0.1 0.05' mass='1.0'/>
             <body name='pole' pos='0 0 0'>
-                <joint name='revolute_joint' type='hinge' axis='0 1 0' damping='0.01'/>
+                <joint name='revolute_joint' type='hinge' axis='0 1 0' damping='0.05'/>
                 <geom name='pole_geom' type='capsule' pos='0 0 -0.2' size='0.05 0.1' mass='1.0'/>
             </body>
         </body>
     </worldbody>
 
     <actuator>
-        <motor name='slide' joint='slider' gear='100 0 0 0 0 0' ctrllimited='true' ctrlrange='-1 1'/>
+        <motor name='slide' joint='slider' gear='100 0 0 0 0 0' ctrllimited='true' ctrlrange='-0.5 0.5'/>
     </actuator>
 
 </mujoco>

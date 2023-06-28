@@ -11,7 +11,7 @@ import brax
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
-import model
+import model_distribution as model
 import model_utilities
 import cartpole
 import custom_wrapper
@@ -53,6 +53,7 @@ def init_params(module, input_size, key):
     params = module.init(
         key,
         jnp.ones(input_size),
+        jax.random.split(key, input_size[0]),
     )['params']
     return params
 
@@ -70,6 +71,21 @@ def create_train_state(module, params, learning_rate):
 
 
 def main(argv=None):
+    """
+        Best Parameters:
+        optimizer = adam
+        learning_rate = 0.001
+        clip_coef = 0.2
+
+        Best Environment:
+        |x| >= 4.0
+        control_range = 1.0
+
+        Best Model:
+        No distribution
+        Backend = positions
+        range_limit = 1.0
+    """
     # RNG Key:
     key_seed = 42
 
@@ -108,16 +124,23 @@ def main(argv=None):
     )
 
     # Create a train state:
-    learning_rate = 0.001
+    schedule = optax.warmup_cosine_decay_schedule(
+        init_value=0.001,
+        peak_value=0.1,
+        warmup_steps=50,
+        decay_steps=450,
+        end_value=0.0,
+    )
+    learning_rate = 1e-3  # 0.001
     model_state = create_train_state(
         module=network,
         params=initial_params,
-        learning_rate=learning_rate,
+        learning_rate=schedule,
     )
     del initial_params
 
     # Test Environment:
-    training_length = 1000
+    training_length = 500
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
@@ -130,14 +153,17 @@ def main(argv=None):
         actions_episode = []
         rewards_episode = []
         masks_episode = []
+        keys_episode = []
         for environment_step in range(episode_length):
             # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
+            model_key = jax.random.split(env_key, num_envs)
             model_input = states.obs
-            mean, std, values = model_utilities.forward_pass(
+            mean, std, values = model_utilities.forward_pass_rng(
                 model_state.params,
                 model_state.apply_fn,
                 model_input,
+                model_key,
             )
             # Unpack QP Output:
             actions, log_probability, entropy = model_utilities.select_action(
@@ -157,6 +183,7 @@ def main(argv=None):
             rewards_episode.append(jnp.squeeze(states.reward))
             masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
             model_input_episode.append(model_input)
+            keys_episode.append(model_key)
             states = next_states
             state_history.append(states)
 
@@ -182,14 +209,19 @@ def main(argv=None):
         model_input_episode = jnp.swapaxes(
             jnp.asarray(model_input_episode), axis1=1, axis2=0,
         )
+        keys_episode = jnp.swapaxes(
+            jnp.asarray(keys_episode), axis1=1, axis2=0,
+        )
 
         # No Gradient Calculation:
         model_input = states.obs
+        model_key = jax.random.split(env_key, num_envs)
         _, _, values = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
+            model_utilities.forward_pass_rng(
                 model_state.params,
                 model_state.apply_fn,
                 model_input,
+                model_key,
             ),
         )
 
@@ -209,13 +241,14 @@ def main(argv=None):
         )
 
         # Update Function:
-        model_state, loss = model_utilities.train_step(
+        model_state, loss = model_utilities.train_step_rng(
             model_state,
             model_input_episode,
             actions_episode,
             advantage_episode,
             returns_episode,
             log_probability_episode,
+            keys_episode,
         )
 
         average_reward = np.mean(

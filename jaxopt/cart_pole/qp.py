@@ -10,7 +10,7 @@ from jaxopt import BoxOSQP
 jax.config.update("jax_enable_x64", True)
 
 
-# @partial(jax.jit, static_argnames=['num_states', 'dt'])
+@partial(jax.jit, static_argnames=['num_states', 'dt'])
 def equality_constraints(
     q: jax.typing.ArrayLike,
     initial_conditions: jax.typing.ArrayLike,
@@ -103,7 +103,7 @@ def equality_constraints(
     return equality_constraint
 
 
-# @partial(jax.jit, static_argnames=['num_states'])
+@partial(jax.jit, static_argnames=['num_states'])
 def inequality_constraints(
     q: jax.Array,
     num_states: int,
@@ -132,7 +132,7 @@ def inequality_constraints(
     return inequality_constraints
 
 
-# @partial(jax.jit, static_argnames=['num_states'])
+@partial(jax.jit, static_argnames=['num_states'])
 def objective_function(
     q: jax.typing.ArrayLike,
     a: jax.typing.ArrayLike,
@@ -275,7 +275,7 @@ def qp_preprocess(
     return equaility_functions, inequality_functions, objective_functions, linearized_functions
 
 
-# @partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
+@partial(jax.jit, static_argnames=['equaility_functions', 'inequality_functions', 'objective_functions', 'linearized_functions', 'nodes', 'num_states'])
 def qp_layer(
     initial_conditions: jax.typing.ArrayLike,
     previous_trajectory: jax.typing.ArrayLike,
@@ -403,7 +403,7 @@ def qp_layer(
     return state_trajectory, objective_value, status
 
 
-# @partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
+@partial(jax.jit, static_argnames=['dynamics_eq', 'num_vars'])
 def linearize_equations(
     q: jax.typing.ArrayLike,
     dynamics_eq: tuple[Callable, Callable, Callable],

@@ -19,11 +19,6 @@ class CartPole(PipelineEnv):
         sys = mjcf.load(filepath)
 
         n_frames = 1
-
-        if backend in ['spring', 'positional']:
-            sys = sys.replace(dt=0.005)
-            n_frames = 4
-
         kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
@@ -59,9 +54,10 @@ class CartPole(PipelineEnv):
         obs = self._get_obs(pipeline_state)
         # Reset Condition : If |x| >= 2.4
         x = jnp.abs(obs[0])
+        # Changed from 4 -> 2
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 4.0, 1.0, 0.0),
+                jnp.where(x >= 2.0, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
