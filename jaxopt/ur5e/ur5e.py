@@ -22,7 +22,10 @@ class ur5e(PipelineEnv):
 
         # Class Wide Paraameters:
         self.initial_q = jnp.array(
-            [0.0, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
+            [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
+        )
+        self.ctrl = jnp.array(
+            [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
         )
         self.reward_function = lambda x: 0.0
 
@@ -64,7 +67,8 @@ class ur5e(PipelineEnv):
         #         jnp.where(x >= 2.0, 1.0, 0.0),
         #     ],
         # )
-        done = jnp.where(terminal_state.any(), 1.0, 0.0)
+        # done = jnp.where(terminal_state.any(), 1.0, 0.0)
+        done = jnp.array(0, dtype=jnp.float64)
         # Reward Function:
         reward = self.reward_function(obs)
         # reward = jnp.where(done == 1.0, -100.0, reward)

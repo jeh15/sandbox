@@ -3,6 +3,7 @@ from typing import List
 import numpy as np
 import numpy.typing as npt
 import brax
+from brax.io import image
 from brax.base import System, State
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
@@ -35,7 +36,7 @@ def generate_video(
     video_length = len(states)
     with writer_obj.saving(fig, name + ".mp4", 300):
         for simulation_step in tqdm(range(0, video_length, rate)):
-            img_array = brax.io.image.render_array(
+            img_array = image.render_array(
                 sys=sys,
                 state=states[simulation_step],
                 width=width,
