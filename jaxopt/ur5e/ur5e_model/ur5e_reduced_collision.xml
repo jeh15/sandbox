@@ -1,7 +1,7 @@
 <mujoco model="ur5e">
   <compiler angle="radian" meshdir="assets" autolimits="true" inertiafromgeom="false"/>
   
-  <!-- Remove Integrator: Brax only support Euler Integration -->
+  <!-- Remove Integrator: Brax only supports Euler Integration -->
   <!-- <option integrator="implicitfast"/> -->
 
   <default>
@@ -24,6 +24,7 @@
       <default class="collision">
         <geom type="capsule" group="3"/>
         <default class="eef_collision">
+          <!-- Brax Visualize cannot visualize cylinder -->
           <!-- <geom type="cylinder"/> -->
           <geom type="capsule"/>
         </default>
@@ -32,14 +33,19 @@
     </default>
   </default>
 
+  <!-- Time Step = 0.01 makes model explode -->
+	<option gravity="0 0 0"/>
+  
+  <size nstack="3000"/>
+
   <custom>
     <!-- brax custom params -->
-    <numeric data="3000" name="constraint_stiffness"/>
-    <numeric data="2000" name="constraint_limit_stiffness"/>
+    <numeric data="10000" name="constraint_stiffness"/>
+    <numeric data="10000" name="constraint_limit_stiffness"/>
     <numeric data="10" name="constraint_ang_damping"/>
     <numeric data="50" name="constraint_vel_damping"/>
     <numeric data="0" name="ang_damping"/>
-    <numeric data="1" name="spring_mass_scale"/>
+    <numeric data="0" name="spring_mass_scale"/>
 		<numeric data="1" name="spring_inertia_scale"/>
 		<numeric data="10" name="solver_maxls"/>
   </custom>
