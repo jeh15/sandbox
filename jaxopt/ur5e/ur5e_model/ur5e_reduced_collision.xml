@@ -1,8 +1,5 @@
 <mujoco model="ur5e">
   <compiler angle="radian" meshdir="assets" autolimits="true" inertiafromgeom="false"/>
-  
-  <!-- Remove Integrator: Brax only supports Euler Integration -->
-  <!-- <option integrator="implicitfast"/> -->
 
   <default>
     <default class="ur5e">
@@ -49,35 +46,32 @@
   </custom>
 
   <asset>
-    <!-- <material class="ur5e" name="black" rgba="0.033 0.033 0.033 1"/>
+    <material class="ur5e" name="black" rgba="1 1 1 1"/>
     <material class="ur5e" name="jointgray" rgba="0.278 0.278 0.278 1"/>
     <material class="ur5e" name="linkgray" rgba="0.82 0.82 0.82 1"/>
-    <material class="ur5e" name="urblue" rgba="0.49 0.678 0.8 1"/> -->
-    <material class="ur5e" name="black" rgba="0.1 0.1 0.8 1"/>
-    <material class="ur5e" name="jointgray" rgba="0.1 0.1 0.8 1"/>
-    <material class="ur5e" name="linkgray" rgba="0.1 0.1 0.8 1"/>
-    <material class="ur5e" name="urblue" rgba="0.1 0.1 0.8 1"/>
+    <material class="ur5e" name="urblue" rgba="0.49 0.678 0.8 1"/>
+    <material class="ur5e" name="blue" rgba="0.49 0.678 0.8 1"/>
 
-    <mesh file="base_0.obj"/>
-    <mesh file="base_1.obj"/>
-    <mesh file="shoulder_0.obj"/>
-    <mesh file="shoulder_1.obj"/>
-    <mesh file="shoulder_2.obj"/>
-    <mesh file="upperarm_0.obj"/>
-    <mesh file="upperarm_1.obj"/>
-    <mesh file="upperarm_2.obj"/>
-    <mesh file="upperarm_3.obj"/>
-    <mesh file="forearm_0.obj"/>
-    <mesh file="forearm_1.obj"/>
-    <mesh file="forearm_2.obj"/>
-    <mesh file="forearm_3.obj"/>
-    <mesh file="wrist1_0.obj"/>
-    <mesh file="wrist1_1.obj"/>
-    <mesh file="wrist1_2.obj"/>
-    <mesh file="wrist2_0.obj"/>
-    <mesh file="wrist2_1.obj"/>
-    <mesh file="wrist2_2.obj"/>
-    <mesh file="wrist3.obj"/>
+    <mesh file="base_0.stl"/>
+    <mesh file="base_1.stl"/>
+    <mesh file="shoulder_0.stl"/>
+    <mesh file="shoulder_1.stl"/>
+    <mesh file="shoulder_2.stl"/>
+    <mesh file="upperarm_0.stl"/>
+    <mesh file="upperarm_1.stl"/>
+    <mesh file="upperarm_2.stl"/>
+    <mesh file="upperarm_3.stl"/>
+    <mesh file="forearm_0.stl"/>
+    <mesh file="forearm_1.stl"/>
+    <mesh file="forearm_2.stl"/>
+    <mesh file="forearm_3.stl"/>
+    <mesh file="wrist1_0.stl"/>
+    <mesh file="wrist1_1.stl"/>
+    <mesh file="wrist1_2.stl"/>
+    <mesh file="wrist2_0.stl"/>
+    <mesh file="wrist2_1.stl"/>
+    <mesh file="wrist2_2.stl"/>
+    <mesh file="wrist3.stl"/>
   </asset>
 
   <worldbody>
@@ -85,8 +79,8 @@
     <body name="base" quat="1 0 0 1" childclass="ur5e">
       <!-- World Body Inertia Error: -->
       <!-- <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/> -->
-      <geom mesh="base_0" material="black" class="visual"/>
-      <geom mesh="base_1" material="jointgray" class="visual"/>
+      <geom mesh="base_0" material="black" rgba="0.278 0.278 0.278 1" class="visual"/>
+      <geom mesh="base_1" material="jointgray" rgba="0.278 0.278 0.278 1" class="visual"/>
       <body name="shoulder_link" pos="0 0 0.163">
         <inertial mass="3.7" pos="0 0 0" diaginertia="0.0102675 0.0102675 0.00666"/>
         <joint name="shoulder_pan_joint" class="size3" axis="0 0 1"/>

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import brax
 from brax.io import mjcf
-from brax.positional import pipeline
+from brax.generalized import pipeline
 
 import visualize
 
@@ -22,13 +22,13 @@ def main(argv=None):
             [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
             dtype=jnp.float32,
         )
-    state = jax.jit(pipeline.init)(pipeline_model, initial_q, jnp.zeros_like(pipeline_model.init_q))
+    state = jax.jit(pipeline.init)(pipeline_model, initial_q, jnp.zeros_like(pipeline_model.init_q, dtype=jnp.float32))
     step_fn = jax.jit(pipeline.step)
 
-    simulation_steps = 5000
+    simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
-        action = ctrl + jnp.array([2 * jnp.cos(simulation_steps), 0.0, 0.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
+        action = ctrl + jnp.array([10 * jnp.cos(simulation_steps * 180 / jnp.pi), 0.0, 0.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
         state = step_fn(pipeline_model, state, action)
         state_history.append(state)
 
