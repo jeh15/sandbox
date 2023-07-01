@@ -52,6 +52,34 @@ def calculate_advantage(rewards, values, mask, episode_length):
     return advantage, returns
 
 
+@jax.jit
+def train_step(
+    model_state,
+    model_input,
+    actions,
+    advantages,
+    returns,
+    previous_log_probability,
+    keys,
+):
+    # Print Statement:
+    print('Compiling Train Step...')
+    gradient_function = jax.value_and_grad(loss_function)
+    loss, gradients = gradient_function(
+        model_state.params,
+        model_state.apply_fn,
+        model_input,
+        actions,
+        advantages,
+        returns,
+        previous_log_probability,
+        keys,
+    )
+    model_state = model_state.apply_gradients(grads=gradients)
+    return model_state, loss
+
+
+# Vmapped Version:
 @functools.partial(jax.jit, static_argnames=['apply_fn'])
 def loss_function(
     model_params,
@@ -71,44 +99,12 @@ def loss_function(
     entropy_coeff = 0.01
     clip_coeff = 0.2
 
-    model_input = jnp.swapaxes(
-        jnp.asarray(model_input), axis1=1, axis2=0,
-    )
-    actions = jnp.swapaxes(
-        jnp.asarray(actions), axis1=1, axis2=0,
-    )
-    keys = jnp.swapaxes(
-        jnp.asarray(keys), axis1=1, axis2=0,
-    )
-    length = model_input.shape[0]
-
-    def forward_pass_rollout(carry, xs):
-        model_input, actions, key = xs
-        mean, std, values = forward_pass(
-            model_params, apply_fn, model_input, key,
-        )
-        mean, std, values = jnp.squeeze(mean), jnp.squeeze(std), jnp.squeeze(values)
-        log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
-        carry = None
-        data = (values, log_probability, entropy)
-        return carry, data
-
-    # Scan over replay:
-    carry, data = jax.lax.scan(
-        forward_pass_rollout,
-        None,
-        (model_input, actions, keys),
-        length,
-    )
-    values, log_probability, entropy = data
-    values = jnp.swapaxes(
-        jnp.asarray(values), axis1=1, axis2=0,
-    )
-    log_probability = jnp.swapaxes(
-        jnp.asarray(log_probability), axis1=1, axis2=0,
-    )
-    entropy = jnp.swapaxes(
-        jnp.asarray(entropy), axis1=1, axis2=0,
+    values, log_probability, entropy = replay(
+        model_params,
+        apply_fn,
+        model_input,
+        actions,
+        keys,
     )
 
     # Calculate Ratio: (Should this be No Grad?)
@@ -137,28 +133,18 @@ def loss_function(
     return ppo_loss + value_loss + entropy_loss
 
 
-@jax.jit
-def train_step(
-    model_state,
+@functools.partial(jax.jit, static_argnames=['apply_fn'])
+@functools.partial(jax.vmap, in_axes=(None, None, 1, 1, 1), out_axes=(1, 1, 1))
+def replay(
+    model_params,
+    apply_fn,
     model_input,
     actions,
-    advantages,
-    returns,
-    previous_log_probability,
     keys,
 ):
-    # Print Statement:
-    print('Compiling Train Step...')
-    gradient_function = jax.value_and_grad(loss_function)
-    loss, gradients = gradient_function(
-        model_state.params,
-        model_state.apply_fn,
-        model_input,
-        actions,
-        advantages,
-        returns,
-        previous_log_probability,
-        keys,
+    print('Compiling Replay Function...')
+    mean, std, values = forward_pass(
+        model_params, apply_fn, model_input, keys,
     )
-    model_state = model_state.apply_gradients(grads=gradients)
-    return model_state, loss
+    log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+    return jnp.squeeze(values), jnp.squeeze(log_probability), jnp.squeeze(entropy)

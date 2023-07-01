@@ -134,7 +134,7 @@ def loss_function(
     # Entropy Loss:
     entropy_loss = -entropy_coeff * jnp.mean(entropy)
 
-    return ppo_loss + value_loss + entropy_loss
+    return ppo_loss + value_loss + entropy_loss, log_probability
 
 
 @jax.jit
@@ -150,7 +150,7 @@ def train_step(
     # Print Statement:
     print('Compiling Train Step...')
     gradient_function = jax.value_and_grad(loss_function)
-    loss, gradients = gradient_function(
+    (loss, log_probability), gradients = gradient_function(
         model_state.params,
         model_state.apply_fn,
         model_input,

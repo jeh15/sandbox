@@ -11,8 +11,8 @@ import brax
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
-import model
-import model_utilities
+import large_model as model
+import model_utilities_v2 as model_utilities
 import cartpole
 import custom_wrapper
 import visualize_cartpole as visualizer
@@ -116,7 +116,7 @@ def main(argv=None):
     )
 
     # Create a train state:
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     end_learning_rate = 1e-6
     schedule = optax.linear_schedule(
         init_value=learning_rate,
@@ -251,7 +251,7 @@ def main(argv=None):
             advantage_episode,
             returns_episode,
             log_probability_episode,
-            keys_episode,
+            train_step_keys,
         )
 
         average_reward = np.mean(

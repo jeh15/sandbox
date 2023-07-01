@@ -85,7 +85,7 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 256
+    num_envs = 512
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -243,14 +243,17 @@ def main(argv=None):
             (num_envs, episode_length, train_step_keys.shape[-1]),
         )
 
+        if iteration == 0:
+            previous_log_probability = log_probability_episode
+
         # Update Function:
-        model_state, loss = model_utilities.train_step(
+        model_state, loss, previous_log_probability = model_utilities.train_step(
             model_state,
             model_input_episode,
             actions_episode,
             advantage_episode,
             returns_episode,
-            log_probability_episode,
+            previous_log_probability,
             keys_episode,
         )
 
