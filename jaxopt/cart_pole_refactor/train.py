@@ -116,14 +116,20 @@ def main(argv=None):
         key=initial_key,
     )
 
-    # Create a train state:
+    # Hyperparameters:
     learning_rate = 1e-3
     end_learning_rate = 1e-6
+    transition_steps = 100
+    transition_begin = 100
+    ppo_steps = 10
+    training_length = 500
+
+    # Create a train state:
     schedule = optax.linear_schedule(
         init_value=learning_rate,
         end_value=end_learning_rate,
-        transition_steps=1000,
-        transition_begin=1000,
+        transition_steps=ppo_steps * transition_steps,
+        transition_begin=ppo_steps * transition_begin,
     )
     tx = optimizer(learning_rate=schedule)
     model_state = create_train_state(
@@ -133,8 +139,7 @@ def main(argv=None):
     )
     del initial_params
 
-    # Test Environment:
-    training_length = 500
+    # Learning Loop:
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
@@ -148,21 +153,21 @@ def main(argv=None):
         rewards_episode = []
         masks_episode = []
         keys_episode = []
+        # Episode Loop:
         for environment_step in range(episode_length):
-            # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
             model_key = jax.random.split(env_key, num_envs)
             model_input = states.obs
             mean, std, values = model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-                model_key,
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
             )
             actions, log_probability, entropy = model_utilities.select_action(
-                mean,
-                std,
-                env_key,
+                mean=mean,
+                std=std,
+                key=env_key,
             )
             next_states = step_fn(
                 states,
@@ -211,10 +216,10 @@ def main(argv=None):
         model_key = jax.random.split(env_key, num_envs)
         _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-                model_key,
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
             ),
         )
 
@@ -226,35 +231,25 @@ def main(argv=None):
 
         advantage_episode, returns_episode = jax.lax.stop_gradient(
             model_utilities.calculate_advantage(
-                rewards_episode,
-                values_episode,
-                masks_episode,
-                episode_length,
+                rewards=rewards_episode,
+                values=values_episode,
+                mask=masks_episode,
+                episode_length=episode_length,
             )
-        )
-
-        # Generate new RNG keys:
-        train_step_keys = jax.random.split(
-            env_key,
-            (num_envs * episode_length),
-        )
-        train_step_keys = jnp.reshape(
-            train_step_keys,
-            (num_envs, episode_length, train_step_keys.shape[-1]),
         )
 
         # Update Function:
         model_state, loss = model_utilities.train_step(
-            model_state,
-            model_input_episode,
-            actions_episode,
-            advantage_episode,
-            returns_episode,
-            log_probability_episode,
-            keys_episode,
-            num_envs,
-            episode_length,
-            10,
+            model_state=model_state,
+            model_input=model_input_episode,
+            actions=actions_episode,
+            advantages=advantage_episode,
+            returns=returns_episode,
+            previous_log_probability=log_probability_episode,
+            keys=keys_episode,
+            batch_size=num_envs,
+            episode_length=episode_length,
+            ppo_steps=ppo_steps,
         )
 
         average_reward = np.mean(

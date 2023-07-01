@@ -165,7 +165,6 @@ class ActorCriticNetwork(nn.Module):
         step_pipeline = lambda x, i: pipeline.step(self.env, x, i)
         self.step_pipeline = jax.jit(step_pipeline)
 
-    # Small Network:
     def model(self, x, key):
         # Limit Output Range:
         range_limit = 0.5
@@ -181,7 +180,6 @@ class ActorCriticNetwork(nn.Module):
         x = self.pipeline_layer_2(x)
         x_mu = range_limit * nn.tanh(x[0])
         x_std = nn.sigmoid(x[1])
-        # Sample Action:
         probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
@@ -237,7 +235,6 @@ class ActorCriticNetwork(nn.Module):
         x = self.pipeline_layer_12(x)
         x_mu = range_limit * nn.tanh(x[0])
         x_std = nn.sigmoid(x[1])
-        # Sample Action:
         probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
