@@ -1,6 +1,5 @@
 from absl import app
 from typing import Optional
-import time
 
 import numpy as np
 import jax
@@ -56,15 +55,20 @@ def init_params(module, input_size, key):
     return params
 
 
-def create_train_state(module, params, learning_rate):
-    """Creates an initial `TrainState`."""
-    tx = optax.adam(
-        learning_rate=learning_rate,
+@optax.inject_hyperparams
+def optimizer(learning_rate):
+    return optax.chain(
+        optax.amsgrad(
+            learning_rate=learning_rate,
+        ),
     )
+
+
+def create_train_state(module, params, optimizer):
     return train_state.TrainState.create(
         apply_fn=module.apply,
         params=params,
-        tx=tx,
+        tx=optimizer,
     )
 
 
@@ -77,12 +81,13 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 32
+    num_envs = 512
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
+        backend='generalized'
     )
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
@@ -102,16 +107,24 @@ def main(argv=None):
     )
 
     # Create a train state:
-    learning_rate = 0.001
+    learning_rate = 1e-3
+    end_learning_rate = 1e-6
+    schedule = optax.linear_schedule(
+        init_value=learning_rate,
+        end_value=end_learning_rate,
+        transition_steps=1000,
+        transition_begin=1000,
+    )
+    tx = optimizer(learning_rate=schedule)
     model_state = create_train_state(
         module=network,
         params=initial_params,
-        learning_rate=learning_rate,
+        optimizer=tx,
     )
     del initial_params
 
     # Test Environment:
-    training_length = 1000
+    training_length = 500
     key, env_key = jax.random.split(initial_key)
     for iteration in range(training_length):
         states = reset_fn(env_key)
@@ -209,6 +222,7 @@ def main(argv=None):
             advantage_episode,
             returns_episode,
             log_probability_episode,
+            ppo_steps=10,
         )
 
         average_reward = np.mean(

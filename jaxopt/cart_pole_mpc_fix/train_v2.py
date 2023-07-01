@@ -254,7 +254,7 @@ def main(argv=None):
             keys_episode,
             num_envs,
             episode_length,
-            3,
+            10,
         )
 
         average_reward = np.mean(

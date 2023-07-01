@@ -67,9 +67,10 @@ def train_step(
 ):
     # Print Statement:
     print('Compiling Train Step...')
-    gradient_function = jax.value_and_grad(loss_function)
+
     # PPO Optimixation Loop:
-    for ppo_step in range(ppo_steps):
+    def ppo_loop(carry, xs):
+        model_state, keys = carry
         loss, gradients = gradient_function(
             model_state.params,
             model_state.apply_fn,
@@ -90,8 +91,68 @@ def train_step(
             keys,
             (batch_size, episode_length, keys.shape[-1]),
         )
+        # Pack carry and data:
+        carry = model_state, keys
+        data = loss
+        return carry, data
+
+    gradient_function = jax.value_and_grad(loss_function)
+
+    carry, data = jax.lax.scan(
+        f=ppo_loop,
+        init=(model_state, keys),
+        xs=None,
+        length=ppo_steps,
+    )
+
+    # Unpack carry and data:
+    model_state, _ = carry
+    loss = data
+    loss = jnp.mean(loss)
 
     return model_state, loss
+
+
+# @functools.partial(jax.jit, static_argnames=['batch_size', 'episode_length', 'ppo_steps'])
+# def train_step(
+#     model_state,
+#     model_input,
+#     actions,
+#     advantages,
+#     returns,
+#     previous_log_probability,
+#     keys,
+#     batch_size,
+#     episode_length,
+#     ppo_steps,
+# ):
+#     # Print Statement:
+#     print('Compiling Train Step...')
+#     gradient_function = jax.value_and_grad(loss_function)
+#     # PPO Optimixation Loop:
+#     for ppo_step in range(ppo_steps):
+#         loss, gradients = gradient_function(
+#             model_state.params,
+#             model_state.apply_fn,
+#             model_input,
+#             actions,
+#             advantages,
+#             returns,
+#             previous_log_probability,
+#             keys,
+#         )
+#         model_state = model_state.apply_gradients(grads=gradients)
+#         # Generate new RNG keys:
+#         keys = jax.random.split(
+#             keys[0, 0],
+#             (batch_size * episode_length),
+#         )
+#         keys = jnp.reshape(
+#             keys,
+#             (batch_size, episode_length, keys.shape[-1]),
+#         )
+
+#     return model_state, loss
 
 
 # Vmapped Version:

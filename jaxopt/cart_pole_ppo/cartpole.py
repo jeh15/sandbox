@@ -1,19 +1,19 @@
 import os
-import pathlib
 
 from brax import base
 from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 import jax
-jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 
 
 class CartPole(PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
         # Better:
-        asset_path = r'assets/cartpole_swing_up.xml'
+        asset_path = r'assets/cartpole_friction.xml'
         filepath = os.path.join(os.path.dirname(__file__), asset_path)
 
         sys = mjcf.load(filepath)
@@ -61,7 +61,7 @@ class CartPole(PipelineEnv):
         x = jnp.abs(obs[0])
         terminal_state = jnp.array(
             [
-                jnp.where(x >= 4.0, 1.0, 0.0),
+                jnp.where(x >= 2.0, 1.0, 0.0),
             ],
         )
         done = jnp.where(terminal_state.any(), 1.0, 0.0)

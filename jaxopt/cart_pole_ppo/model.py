@@ -60,7 +60,7 @@ class ActorCriticNetwork(nn.Module):
     # Small Network:
     def model(self, x):
         # Limit Output Range:
-        range_limit = 0.1
+        range_limit = 0.5
 
         # Policy Layer: Nonlinear Function of Acceleration
         y = self.dense_1(x)
@@ -83,7 +83,7 @@ class ActorCriticNetwork(nn.Module):
         mean = self.mean_layer(y)
         mean = range_limit * nn.tanh(mean)
         std = self.std_layer(z)
-        std = range_limit * nn.softplus(std)
+        std = nn.softplus(std)
         values = self.value_layer(w)
         return mean, std, values
 
