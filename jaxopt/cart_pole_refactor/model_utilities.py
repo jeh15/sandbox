@@ -10,14 +10,14 @@ jax.config.update("jax_enable_x64", True)
 dtype = jnp.float64
 
 
-@functools.partial(jax.jit, static_argnames=['apply_fn'])
+@functools.partial(jax.jit, static_argnames=["apply_fn"])
 def forward_pass(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
     x: jax.typing.ArrayLike,
     key: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    mean, std, values = apply_fn({'params': model_params}, x, key)
+    mean, std, values = apply_fn({"params": model_params}, x, key)
     return mean, std, values
 
 
@@ -46,7 +46,7 @@ def evaluate_action(
     return log_probability, entropy
 
 
-@functools.partial(jax.jit, static_argnames=['episode_length'])
+@functools.partial(jax.jit, static_argnames=["episode_length"])
 @functools.partial(jax.vmap, in_axes=(0, 0, 0, None), out_axes=(0, 0))
 def calculate_advantage(
     rewards: jax.typing.ArrayLike,
@@ -59,7 +59,7 @@ def calculate_advantage(
     gae = 0.0
     advantage = []
     for i in reversed(range(episode_length)):
-        error = rewards[i] + gamma * values[i+1] * mask[i] - values[i]
+        error = rewards[i] + gamma * values[i + 1] * mask[i] - values[i]
         gae = error + gamma * lam * mask[i] * gae
         advantage.append(gae)
     advantage = jnp.array(advantage, dtype=dtype)[::-1]
@@ -67,7 +67,7 @@ def calculate_advantage(
     return advantage, returns
 
 
-@functools.partial(jax.jit, static_argnames=['apply_fn'])
+@functools.partial(jax.jit, static_argnames=["apply_fn"])
 def loss_function(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
@@ -117,7 +117,7 @@ def loss_function(
     return ppo_loss + value_loss + entropy_loss
 
 
-@functools.partial(jax.jit, static_argnames=['apply_fn'])
+@functools.partial(jax.jit, static_argnames=["apply_fn"])
 @functools.partial(jax.vmap, in_axes=(None, None, 1, 1, 1), out_axes=(1, 1, 1))
 def replay(
     model_params: flax.core.FrozenDict,
@@ -126,15 +126,20 @@ def replay(
     actions: jax.typing.ArrayLike,
     keys: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    print('Compiling Replay Function...')
+    print("Compiling Replay Function...")
     mean, std, values = forward_pass(
-        model_params, apply_fn, model_input, keys,
+        model_params,
+        apply_fn,
+        model_input,
+        keys,
     )
     log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
     return jnp.squeeze(values), jnp.squeeze(log_probability), jnp.squeeze(entropy)
 
 
-@functools.partial(jax.jit, static_argnames=['batch_size', 'episode_length', 'ppo_steps'])
+@functools.partial(
+    jax.jit, static_argnames=["batch_size", "episode_length", "ppo_steps"]
+)
 def train_step(
     model_state: flax.training.train_state.TrainState,
     model_input: jax.typing.ArrayLike,
