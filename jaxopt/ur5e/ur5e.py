@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 class ur5e(PipelineEnv):
@@ -27,7 +28,8 @@ class ur5e(PipelineEnv):
         self.ctrl = jnp.array(
             [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
         )
-        self.reward_function = lambda x: 0.0
+        self.desired_pos = jnp.array([1.0, 1.0, 1.0], dtype=dtype)
+        self.reward_function = lambda x: -jnp.linalg.norm(self.desired_pos - x)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 
@@ -48,41 +50,42 @@ class ur5e(PipelineEnv):
             maxval=jnp.zeros_like(self.initial_q) + eps,
         )
         pipeline_state = self.pipeline_init(q, qd)
-        obs = self._get_obs(pipeline_state)
+        joint_frame = self._get_joint_frame(pipeline_state)
+        maximal_frame = self._get_maximal_frame(pipeline_state)
+        end_effector = maximal_frame[-1, :3]
         # Reward Function:
-        reward = self.reward_function(obs)
+        reward = self.reward_function(end_effector)
         done = jnp.array(0, dtype=jnp.float64)
-        metrics = {}
-
-        return State(pipeline_state, obs, reward, done, metrics)
+        return State(pipeline_state, joint_frame, reward, done, {})
 
     def step(self, state: State, action: jax.typing.ArrayLike) -> State:
         """Run one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
-        obs = self._get_obs(pipeline_state)
-        # Reset Condition :
-        # x = jnp.abs(obs[0])
-        # terminal_state = jnp.array(
-        #     [
-        #         jnp.where(x >= 2.0, 1.0, 0.0),
-        #     ],
-        # )
-        # done = jnp.where(terminal_state.any(), 1.0, 0.0)
+        joint_frame = self._get_joint_frame(pipeline_state)
+        maximal_frame = self._get_maximal_frame(pipeline_state)
+        end_effector = maximal_frame[-1, :3] 
         done = jnp.array(0, dtype=jnp.float64)
         # Reward Function:
-        reward = self.reward_function(obs)
+        reward = self.reward_function(end_effector)
+        # TODO: Create failure condition:
         # reward = jnp.where(done == 1.0, -100.0, reward)
         return state.replace(
-            pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
+            pipeline_state=pipeline_state, obs=joint_frame, reward=reward, done=done
         )
 
     @property
     def action_size(self):
         return 6
+    
+    @property
+    def obs_size(self):
+        return 12
 
-    def _get_obs(self, pipeline_state: base.State) -> jnp.ndarray:
-        # obs -> [
-        #           theta_1, theta_2, theta_3, theta_4, theta_5, theta_6,
-        #           dtheta_1, dtheta_2, dtheta_3, dtheta_4, dtheta_5, dtheta_6,
-        #       ]
+    def _get_joint_frame(self, pipeline_state: base.State) -> jnp.ndarray:
+        # obs -> [th, dth]
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd])
+
+    def _get_maximal_frame(self, pipeline_state: base.State) -> jnp.ndarray:
+        # obs = [x, dx]
+        return jnp.concatenate([pipeline_state.x.pos, pipeline_state.xd.vel], axis=-1)
+
