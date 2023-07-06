@@ -12,6 +12,7 @@ from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
 import model
+import model_utilities
 import ur5e
 import custom_wrapper
 import visualize
@@ -54,7 +55,7 @@ def init_params(module, input_size, key):
         key,
         jnp.ones(input_size),
         jax.random.split(key, input_size[0]),
-    )['params']
+    )["params"]
     return params
 
 
@@ -91,7 +92,7 @@ def main(argv=None):
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
-        backend='generalized'
+        backend="generalized",
     )
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
@@ -100,7 +101,7 @@ def main(argv=None):
     initial_key = jax.random.PRNGKey(key_seed)
 
     # Vmap Network:
-    asset_path = r'ur5e_model/scene.xml'
+    asset_path = r"ur5e_model/scene.xml"
     filepath = os.path.join(os.path.dirname(__file__), asset_path)
     pipeline_model = brax.io.mjcf.load(filepath)
 
@@ -137,8 +138,175 @@ def main(argv=None):
         optimizer=tx,
     )
     del initial_params
-    
 
-if __name__ == '__main__':
+    # Learning Loop:
+    key, env_key = jax.random.split(initial_key)
+    for iteration in range(training_length):
+        states = reset_fn(env_key)
+        state_history = []
+        state_history.append(states)
+        model_input_episode = []
+        states_episode = []
+        values_episode = []
+        log_probability_episode = []
+        actions_episode = []
+        rewards_episode = []
+        masks_episode = []
+        keys_episode = []
+        # Episode Loop:
+        for environment_step in range(episode_length):
+            key, env_key = jax.random.split(env_key)
+            model_key = jax.random.split(env_key, num_envs)
+            model_input = states.obs
+            mean, std, values = model_utilities.forward_pass(
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
+            )
+            actions, log_probability, entropy = model_utilities.select_action(
+                mean=mean,
+                std=std,
+                key=env_key,
+            )
+            next_states = step_fn(
+                states,
+                actions,
+                env_key,
+            )
+            states_episode.append(states.obs)
+            values_episode.append(jnp.squeeze(values))
+            log_probability_episode.append(jnp.squeeze(log_probability))
+            actions_episode.append(jnp.squeeze(actions))
+            rewards_episode.append(jnp.squeeze(states.reward))
+            masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
+            model_input_episode.append(model_input)
+            keys_episode.append(model_key)
+            states = next_states
+            state_history.append(states)
+
+        # Convert to Jax Arrays:
+        states_episode = jnp.swapaxes(
+            jnp.asarray(states_episode),
+            axis1=1,
+            axis2=0,
+        )
+        values_episode = jnp.swapaxes(
+            jnp.asarray(values_episode),
+            axis1=1,
+            axis2=0,
+        )
+        log_probability_episode = jnp.swapaxes(
+            jnp.asarray(log_probability_episode),
+            axis1=1,
+            axis2=0,
+        )
+        actions_episode = jnp.swapaxes(
+            jnp.asarray(actions_episode),
+            axis1=1,
+            axis2=0,
+        )
+        rewards_episode = jnp.swapaxes(
+            jnp.asarray(rewards_episode),
+            axis1=1,
+            axis2=0,
+        )
+        masks_episode = jnp.swapaxes(
+            jnp.asarray(masks_episode),
+            axis1=1,
+            axis2=0,
+        )
+        model_input_episode = jnp.swapaxes(
+            jnp.asarray(model_input_episode),
+            axis1=1,
+            axis2=0,
+        )
+        keys_episode = jnp.swapaxes(
+            jnp.asarray(keys_episode),
+            axis1=1,
+            axis2=0,
+        )
+
+        # No Gradient Calculation:
+        model_input = states.obs
+        model_key = jax.random.split(env_key, num_envs)
+        _, _, values = jax.lax.stop_gradient(
+            model_utilities.forward_pass(
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
+            ),
+        )
+
+        # Calculate Advantage:
+        values_episode = jnp.concatenate(
+            [values_episode, values],
+            axis=1,
+        )
+
+        advantage_episode, returns_episode = jax.lax.stop_gradient(
+            model_utilities.calculate_advantage(
+                rewards=rewards_episode,
+                values=values_episode,
+                mask=masks_episode,
+                episode_length=episode_length,
+            )
+        )
+
+        # Update Function:
+        model_state, loss = model_utilities.train_step(
+            model_state=model_state,
+            model_input=model_input_episode,
+            actions=actions_episode,
+            advantages=advantage_episode,
+            returns=returns_episode,
+            previous_log_probability=log_probability_episode,
+            keys=keys_episode,
+            batch_size=num_envs,
+            episode_length=episode_length,
+            ppo_steps=ppo_steps,
+        )
+
+        average_reward = np.mean(
+            np.sum(
+                (rewards_episode),
+                axis=1,
+            ),
+        )
+
+        average_value = np.mean(
+            np.mean(
+                (values_episode),
+                axis=1,
+            ),
+            axis=0,
+        )
+
+        if average_reward >= best_reward:
+            best_reward = average_reward
+            best_iteration = iteration
+
+        if iteration % 25 == 0:
+            visualize_batches = 16
+            visualize.generate_batch_video(
+                env=env,
+                states=state_history,
+                batch_size=visualize_batches,
+                name=f"ur5e_training_{iteration}",
+            )
+
+        current_learning_rate = model_state.opt_state.hyperparams["learning_rate"]
+        print(
+            f"Epoch: {iteration} \t Average Reward: {average_reward} \t " +
+            f"Loss: {loss} \t Average Value: {average_value} \t " +
+            f"Learning Rate: {current_learning_rate}"
+        )
+
+    print(
+        f"The best reward of {best_reward} was achieved at iteration {best_iteration}"
+    )
+
+
+if __name__ == "__main__":
     app.run(main)
-
