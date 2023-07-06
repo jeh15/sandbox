@@ -20,24 +20,24 @@ class ActorCriticNetwork(nn.Module):
             name='pipeline_layer_1',
             dtype=dtype,
         )
+        self.pipeline_layer_2 = nn.Dense(
+            features=features,
+            name='pipeline_layer_2',
+            dtype=dtype,
+        )
         self.pipeline_layer_3 = nn.Dense(
             features=features,
             name='pipeline_layer_3',
             dtype=dtype,
         )
+        self.pipeline_layer_4 = nn.Dense(
+            features=features,
+            name='pipeline_layer_4',
+            dtype=dtype,
+        )
         self.pipeline_layer_5 = nn.Dense(
             features=features,
             name='pipeline_layer_5',
-            dtype=dtype,
-        )
-        self.pipeline_layer_7 = nn.Dense(
-            features=features,
-            name='pipeline_layer_7',
-            dtype=dtype,
-        )
-        self.pipeline_layer_9 = nn.Dense(
-            features=features,
-            name='pipeline_layer_9',
             dtype=dtype,
         )
         self.dense_1 = nn.Dense(
@@ -70,29 +70,54 @@ class ActorCriticNetwork(nn.Module):
             name='dense_6',
             dtype=dtype,
         )
-        self.pipeline_layer_2 = nn.Dense(
-            features=2,
-            name='pipeline_layer_2',
+        self.pipeline_layer_1_mean = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_1_mean',
             dtype=dtype,
         )
-        self.pipeline_layer_4 = nn.Dense(
-            features=2,
-            name='pipeline_layer_4',
+        self.pipeline_layer_1_std = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_std',
             dtype=dtype,
         )
-        self.pipeline_layer_6 = nn.Dense(
-            features=2,
-            name='pipeline_layer_6',
+        self.pipeline_layer_2_mean = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_2_mean',
             dtype=dtype,
         )
-        self.pipeline_layer_8 = nn.Dense(
-            features=2,
-            name='pipeline_layer_8',
+        self.pipeline_layer_2_std = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_2_std',
             dtype=dtype,
         )
-        self.pipeline_layer_10 = nn.Dense(
-            features=2,
-            name='pipeline_layer_10',
+        self.pipeline_layer_3_mean = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_3_mean',
+            dtype=dtype,
+        )
+        self.pipeline_layer_3_std = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_3_std',
+            dtype=dtype,
+        )
+        self.pipeline_layer_4_mean = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_4_mean',
+            dtype=dtype,
+        )
+        self.pipeline_layer_4_std = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_4_std',
+            dtype=dtype,
+        )
+        self.pipeline_layer_5_mean = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_5_mean',
+            dtype=dtype,
+        )
+        self.pipeline_layer_5_std = nn.Dense(
+            features=self.action_space,
+            name='pipeline_layer_5_std',
             dtype=dtype,
         )
         self.mean_layer = nn.Dense(
@@ -127,54 +152,74 @@ class ActorCriticNetwork(nn.Module):
         # Pipeline Layer 1:
         x = self.pipeline_layer_1(x)
         x = nn.tanh(x)
-        x = self.pipeline_layer_2(x)
-        x_mu = range_limit * nn.tanh(x[0])
-        x_std = nn.sigmoid(x[1])
-        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x_mu = self.pipeline_layer_1_mean(x)
+        x_std = self.pipeline_layer_1_std(x)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = nn.sigmoid(x_std)
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=x_mu,
+            scale_diag=x_std,
+        )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         state_1 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 2:
-        x = self.pipeline_layer_3(state_1)
+        x = self.pipeline_layer_2(state_1)
         x = nn.tanh(x)
-        x = self.pipeline_layer_4(x)
-        x_mu = range_limit * nn.tanh(x[0])
-        x_std = nn.sigmoid(x[1])
-        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x_mu = self.pipeline_layer_2_mean(x)
+        x_std = self.pipeline_layer_2_std(x)
+        x_mu = range_limit * nn.tanh(x_std)
+        x_std = nn.sigmoid(x_mu)
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=x_mu,
+            scale_diag=x_std,
+        )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         state_2 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 3:
-        x = self.pipeline_layer_5(state_2)
+        x = self.pipeline_layer_3(state_2)
         x = nn.tanh(x)
-        x = self.pipeline_layer_6(x)
-        x_mu = range_limit * nn.tanh(x[0])
-        x_std = nn.sigmoid(x[1])
-        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x_mu = self.pipeline_layer_3_mean(x)
+        x_std = self.pipeline_layer_3_std(x)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = nn.sigmoid(x_std)
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=x_mu,
+            scale_diag=x_std,
+        )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         state_3 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 4:
-        x = self.pipeline_layer_7(state_3)
+        x = self.pipeline_layer_4(state_3)
         x = nn.tanh(x)
-        x = self.pipeline_layer_8(x)
-        x_mu = range_limit * nn.tanh(x[0])
-        x_std = nn.sigmoid(x[1])
-        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x_mu = self.pipeline_layer_4_mean(x)
+        x_std = self.pipeline_layer_4_std(x)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = nn.sigmoid(x_std)
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=x_mu,
+            scale_diag=x_std,
+        )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         state_4 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 5:
-        x = self.pipeline_layer_9(state_4)
+        x = self.pipeline_layer_5(state_4)
         x = nn.tanh(x)
-        x = self.pipeline_layer_10(x)
-        x_mu = range_limit * nn.tanh(x[0])
-        x_std = nn.sigmoid(x[1])
-        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x_mu = self.pipeline_layer_5_mean(x)
+        x_std = self.pipeline_layer_5_std(x)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = nn.sigmoid(x_std)
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=x_mu,
+            scale_diag=x_std,
+        )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         state_5 = jnp.concatenate([state.q, state.qd])

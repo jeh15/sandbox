@@ -27,7 +27,10 @@ def select_action(
     std: jax.typing.ArrayLike,
     key: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    probability_distribution = distrax.Normal(loc=mean, scale=std)
+    probability_distribution = distrax.MultivariateNormalDiag(
+        loc=mean,
+        scale_diag=std,
+    )
     actions = probability_distribution.sample(seed=key)
     log_probability = probability_distribution.log_prob(actions)
     entropy = probability_distribution.entropy()
@@ -40,12 +43,16 @@ def evaluate_action(
     std: jax.typing.ArrayLike,
     action: jax.typing.ArrayLike,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    probability_distribution = distrax.Normal(loc=mean, scale=std)
+    probability_distribution = distrax.MultivariateNormalDiag(
+        loc=mean,
+        scale_diag=std,
+    )
     log_probability = probability_distribution.log_prob(action)
     entropy = probability_distribution.entropy()
     return log_probability, entropy
 
 
+# Vmap Version:
 @functools.partial(jax.jit, static_argnames=["episode_length"])
 @functools.partial(jax.vmap, in_axes=(0, 0, 0, None), out_axes=(0, 0))
 def calculate_advantage(
@@ -126,7 +133,6 @@ def replay(
     actions: jax.typing.ArrayLike,
     keys: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    print("Compiling Replay Function...")
     mean, std, values = forward_pass(
         model_params,
         apply_fn,

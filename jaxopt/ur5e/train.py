@@ -247,10 +247,10 @@ def main(argv=None):
 
         advantage_episode, returns_episode = jax.lax.stop_gradient(
             model_utilities.calculate_advantage(
-                rewards=rewards_episode,
-                values=values_episode,
-                mask=masks_episode,
-                episode_length=episode_length,
+                rewards_episode,
+                values_episode,
+                masks_episode,
+                episode_length,
             )
         )
 
@@ -287,14 +287,17 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
+        # TODO: Figure out how to make this compatabile with vmap
         if iteration % 25 == 0:
-            visualize_batches = 16
-            visualize.generate_batch_video(
-                env=env,
+            width = 1280
+            height = 720
+            visualize.generate_video(
+                sys=pipeline_model,
                 states=state_history,
-                batch_size=visualize_batches,
+                width=width,
+                height=height,
                 name=f"ur5e_training_{iteration}",
-            )
+            )  # type: ignore
 
         current_learning_rate = model_state.opt_state.hyperparams["learning_rate"]
         print(
