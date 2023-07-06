@@ -287,7 +287,7 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        # TODO: Figure out how to make this compatabile with vmap
+        # TODO: Figure out how to make this compatible with vmap
         if iteration % 25 == 0:
             width = 1280
             height = 720
