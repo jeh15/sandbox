@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Callable, Any
 
+import jax
 import numpy as np
 import numpy.typing as npt
 import brax
@@ -12,11 +13,21 @@ from tqdm import tqdm
 
 def generate_video(
         sys: System,
-        states: List[State],
+        reset_fn: Callable[..., Any],
+        step_fn: Callable[..., Any],
+        actions: jax.typing.Array,
         width: int,
         height: int,
         name: str,
 ):
+    # Play back episode:
+    states = _episode_playback(
+        sys=sys,
+        reset_fn=reset_fn,
+        step_fn=step_fn,
+        actions=actions,
+    )
+
     fig, ax = plt.subplots()
     ax.set_title("UR5e Model:")
     ax.get_yaxis().set_visible(False)
@@ -44,3 +55,17 @@ def generate_video(
             )
             h.set_data(img_array)
             writer_obj.grab_frame()
+
+
+def _episode_playback(
+    sys: System,
+    reset_fn: Callable[..., Any],
+    step_fn: Callable[..., Any],
+    actions: jax.typing.Array,
+) ->List[State]:
+    state = reset_fn(sys)
+    states = [state]
+    for action in actions:
+        state = step_fn(sys, state, action)
+        states.append(state)
+    return states

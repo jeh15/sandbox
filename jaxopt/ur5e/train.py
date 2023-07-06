@@ -287,23 +287,25 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        # TODO: Figure out how to make this compatible with vmap
         if iteration % 25 == 0:
             width = 1280
             height = 720
+            actions = actions_episode[0, :, :]
             visualize.generate_video(
                 sys=pipeline_model,
-                states=state_history,
+                reset_fn=pipeline_model.init(),
+                step_fn=pipeline_model.step(),
+                actions=actions,
                 width=width,
                 height=height,
                 name=f"ur5e_training_{iteration}",
-            )  # type: ignore
+            )
 
         current_learning_rate = model_state.opt_state.hyperparams["learning_rate"]
         print(
-            f"Epoch: {iteration} \t Average Reward: {average_reward} \t " +
-            f"Loss: {loss} \t Average Value: {average_value} \t " +
-            f"Learning Rate: {current_learning_rate}"
+            f"Epoch: {iteration} \t Average Reward: {average_reward} \t "
+            + f"Loss: {loss} \t Average Value: {average_value} \t "
+            + f"Learning Rate: {current_learning_rate}"
         )
 
     print(
