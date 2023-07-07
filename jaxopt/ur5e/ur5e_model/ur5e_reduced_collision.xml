@@ -79,6 +79,8 @@
     <body name="base" quat="1 0 0 1" childclass="ur5e">
       <!-- World Body Inertia Error: -->
       <!-- <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/> -->
+      <!-- Target Position: -->
+      <geom type="sphere" pos="0.3 0.3 0.5" size="0.05" rgba="1 0 0 1" class="visual"/>
       <geom mesh="base_0" material="black" rgba="0.278 0.278 0.278 1" class="visual"/>
       <geom mesh="base_1" material="jointgray" rgba="0.278 0.278 0.278 1" class="visual"/>
       <body name="shoulder_link" pos="0 0 0.163">

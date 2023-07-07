@@ -2,7 +2,6 @@ from typing import List, Callable, Any
 
 import jax
 import numpy as np
-import numpy.typing as npt
 import brax
 from brax.io import image
 from brax.base import System, State
@@ -13,9 +12,9 @@ from tqdm import tqdm
 
 def generate_video(
         sys: System,
-        reset_fn: Callable[..., Any],
         step_fn: Callable[..., Any],
-        actions: jax.typing.Array,
+        state: State,
+        actions: jax.Array,
         width: int,
         height: int,
         name: str,
@@ -23,8 +22,8 @@ def generate_video(
     # Play back episode:
     states = _episode_playback(
         sys=sys,
-        reset_fn=reset_fn,
         step_fn=step_fn,
+        state=state,
         actions=actions,
     )
 
@@ -59,13 +58,12 @@ def generate_video(
 
 def _episode_playback(
     sys: System,
-    reset_fn: Callable[..., Any],
     step_fn: Callable[..., Any],
-    actions: jax.typing.Array,
-) ->List[State]:
-    state = reset_fn(sys)
+    state: State,
+    actions: jax.Array,
+) -> List[State]:
     states = [state]
-    for action in actions:
-        state = step_fn(sys, state, action)
+    for i in range(actions.shape[0]):
+        state = step_fn(sys, state, actions[i])
         states.append(state)
     return states

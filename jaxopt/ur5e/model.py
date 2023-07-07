@@ -142,7 +142,15 @@ class ActorCriticNetwork(nn.Module):
 
     def model(self, x, key):
         # Limit Output Range:
-        range_limit = 1.0
+        high_limit = 150.0 / 2.0
+        low_limit = 28.0 / 2.0
+        range_limit = jnp.array(
+            [
+                high_limit, high_limit, high_limit,
+                low_limit, low_limit, low_limit,
+            ],
+            dtype=dtype,
+        )
 
         # Create Initial Pipeline State:
         q = x[:6]
@@ -169,8 +177,8 @@ class ActorCriticNetwork(nn.Module):
         x = nn.tanh(x)
         x_mu = self.pipeline_layer_2_mean(x)
         x_std = self.pipeline_layer_2_std(x)
-        x_mu = range_limit * nn.tanh(x_std)
-        x_std = nn.sigmoid(x_mu)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = nn.sigmoid(x_std)
         probability_distribution = distrax.MultivariateNormalDiag(
             loc=x_mu,
             scale_diag=x_std,

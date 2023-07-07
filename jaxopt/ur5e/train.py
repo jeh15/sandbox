@@ -86,7 +86,7 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 2
+    num_envs = 32
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -288,13 +288,18 @@ def main(argv=None):
             best_iteration = iteration
 
         if iteration % 25 == 0:
-            width = 1280
-            height = 720
+            width = 640
+            height = 480
             actions = actions_episode[0, :, :]
+            initial_state = jax.jit(brax.generalized.pipeline.init)(
+                    pipeline_model,
+                    env.initial_q,
+                    jnp.zeros_like(env.initial_q),
+                )
             visualize.generate_video(
                 sys=pipeline_model,
-                reset_fn=pipeline_model.init(),
-                step_fn=pipeline_model.step(),
+                step_fn=jax.jit(brax.generalized.pipeline.step),
+                state=initial_state,
                 actions=actions,
                 width=width,
                 height=height,

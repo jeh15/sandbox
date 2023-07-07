@@ -44,7 +44,7 @@ def main(argv=None):
         width=1280,
         height=720,
         name="ur5e_simulation",
-    )
+    )  # type: ignore
 
 
 if __name__ == "__main__":
