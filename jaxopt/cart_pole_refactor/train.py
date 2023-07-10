@@ -16,6 +16,7 @@ import model_utilities
 import cartpole
 import custom_wrapper
 import visualize_cartpole as visualizer
+import save_checkpoint
 
 jax.config.update("jax_enable_x64", True)
 dtype = jnp.float64
@@ -285,6 +286,8 @@ def main(argv=None):
 
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
-
+    save_checkpoint.save_checkpoint(state=model_state, path='./checkpoints')
+    
+    
 if __name__ == '__main__':
     app.run(main)
