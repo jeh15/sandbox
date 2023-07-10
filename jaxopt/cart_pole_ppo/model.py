@@ -41,6 +41,62 @@ class ActorCriticNetwork(nn.Module):
             name='dense_6',
             dtype=dtype,
         )
+        self.dense_7 = nn.Dense(
+            features=features,
+            name='dense_7',
+            dtype=dtype,
+        )
+        self.dense_8 = nn.Dense(
+            features=features,
+            name='dense_8',
+            dtype=dtype,
+        )
+        self.dense_9 = nn.Dense(
+            features=features,
+            name='dense_9',
+            dtype=dtype,
+        )
+        self.dense_10 = nn.Dense(
+            features=features,
+            name='dense_10',
+            dtype=dtype,
+        )
+        self.dense_11 = nn.Dense(
+            features=features,
+            name='dense_11',
+            dtype=dtype,
+        )
+        self.dense_12 = nn.Dense(
+            features=features,
+            name='dense_12',
+            dtype=dtype,
+        )
+        self.dense_13 = nn.Dense(
+            features=features,
+            name='dense_13',
+            dtype=dtype,
+        )
+        self.dense_14 = nn.Dense(
+            features=features,
+            name='dense_14',
+            dtype=dtype,
+        )
+        self.dense_15 = nn.Dense(
+            features=features,
+            name='dense_15',
+            dtype=dtype,
+        )
+        self.dense_16 = nn.Dense(
+            features=features,
+            name='dense_16',
+            dtype=dtype,
+        ) 
+        self.mean_layer = nn.Dense(
+            features=self.action_space,
+            name='mean_layer',
+            dtype=dtype,
+        )
+        
         self.mean_layer = nn.Dense(
             features=self.action_space,
             name='mean_layer',
@@ -62,6 +118,27 @@ class ActorCriticNetwork(nn.Module):
         # Limit Output Range:
         range_limit = 0.5
 
+        x = self.dense_1(x)
+        x = nn.tanh(x)
+        x = self.dense_2(x)
+        x = nn.tanh(x)
+        x = self.dense_3(x)
+        x = nn.tanh(x)
+        x = self.dense_4(x)
+        x = nn.tanh(x)
+        x = self.dense_5(x)
+        x = nn.tanh(x)
+        x = self.dense_6(x)
+        x = nn.tanh(x)
+        x = self.dense_7(x)
+        x = nn.tanh(x)
+        x = self.dense_8(x)
+        x = nn.tanh(x)
+        x = self.dense_9(x)
+        x = nn.tanh(x)
+        x = self.dense_10(x)
+        x = nn.tanh(x)
+
         # Policy Layer: Nonlinear Function of Acceleration
         y = self.dense_1(x)
         y = nn.tanh(y)
@@ -79,11 +156,11 @@ class ActorCriticNetwork(nn.Module):
         w = self.dense_6(w)
         w = nn.tanh(w)
 
-        # Output Layer:
+        # Output Layer: (changed from softmax to sigmoid)
         mean = self.mean_layer(y)
         mean = range_limit * nn.tanh(mean)
         std = self.std_layer(z)
-        std = nn.softplus(std)
+        std = nn.sigmoid(std)
         values = self.value_layer(w)
         return mean, std, values
 

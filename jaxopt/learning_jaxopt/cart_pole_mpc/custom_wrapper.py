@@ -14,6 +14,8 @@
 
 # Solution provided by @DavidSlayback from https://github.com/google/brax/issues/174
 
+
+"""Wrappers for Brax to support different upstream use cases."""
 from typing import Callable, Any
 from brax.envs.base import State, Wrapper
 

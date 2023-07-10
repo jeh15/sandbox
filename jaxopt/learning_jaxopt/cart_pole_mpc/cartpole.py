@@ -14,7 +14,7 @@ class CartPole(PipelineEnv):
 
     def __init__(self, backend='generalized', **kwargs):
         # Better:
-        asset_path = r'assets/cartpole.xml'
+        asset_path = r'assets/cartpole_swing_up.xml'
         filepath = os.path.join(os.path.dirname(__file__), asset_path)
 
         sys = mjcf.load(filepath)

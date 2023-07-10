@@ -1,4 +1,5 @@
 import os
+import pickle
 from absl import app
 from typing import Optional
 
@@ -16,6 +17,7 @@ import model_utilities
 import cartpole
 import custom_wrapper
 import visualize_cartpole as visualizer
+import save_checkpoint
 
 jax.config.update("jax_enable_x64", True)
 dtype = jnp.float64
@@ -59,6 +61,7 @@ def init_params(module, input_size, key):
     return params
 
 
+# @optax.inject_hyperparams allows introspection of learning_rate
 @optax.inject_hyperparams
 def optimizer(learning_rate):
     return optax.chain(
@@ -85,7 +88,7 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 256
+    num_envs = 128
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -99,10 +102,11 @@ def main(argv=None):
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
 
-    # Vmap Network:
-    asset_path = r'assets/cartpole_friction.xml'
-    filepath = os.path.join(os.path.dirname(__file__), asset_path)
-    pipeline_model = brax.io.mjcf.load(filepath)
+    # Filepath:
+    filepath = os.path.dirname(__file__)
+    asset_path = r'assets/cartpole.xml'
+    asset_path = os.path.join(filepath, asset_path)
+    pipeline_model = brax.io.mjcf.load(asset_path)
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
@@ -115,14 +119,20 @@ def main(argv=None):
         key=initial_key,
     )
 
-    # Create a train state:
+    # Hyperparameters:
     learning_rate = 1e-3
     end_learning_rate = 1e-6
+    transition_steps = 100
+    transition_begin = 100
+    ppo_steps = 10
+    training_length = 500
+
+    # Create a train state:
     schedule = optax.linear_schedule(
         init_value=learning_rate,
         end_value=end_learning_rate,
-        transition_steps=350,
-        transition_begin=150,
+        transition_steps=ppo_steps * transition_steps,
+        transition_begin=ppo_steps * transition_begin,
     )
     tx = optimizer(learning_rate=schedule)
     model_state = create_train_state(
@@ -132,9 +142,14 @@ def main(argv=None):
     )
     del initial_params
 
-    # Test Environment:
-    training_length = 500
+    # Learning Loop:
     key, env_key = jax.random.split(initial_key)
+    visualize_flag = False
+    # Metrics:
+    reward_history = []
+    values_history = []
+    mask_history = []
+    loss_history = []
     for iteration in range(training_length):
         states = reset_fn(env_key)
         state_history = []
@@ -147,22 +162,21 @@ def main(argv=None):
         rewards_episode = []
         masks_episode = []
         keys_episode = []
+        # Episode Loop:
         for environment_step in range(episode_length):
-            # Brax Environment Step:
             key, env_key = jax.random.split(env_key)
             model_key = jax.random.split(env_key, num_envs)
             model_input = states.obs
             mean, std, values = model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-                model_key,
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
             )
-            # Unpack QP Output:
             actions, log_probability, entropy = model_utilities.select_action(
-                mean,
-                std,
-                env_key,
+                mean=mean,
+                std=std,
+                key=env_key,
             )
             next_states = step_fn(
                 states,
@@ -211,10 +225,10 @@ def main(argv=None):
         model_key = jax.random.split(env_key, num_envs)
         _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-                model_key,
+                model_params=model_state.params,
+                apply_fn=model_state.apply_fn,
+                x=model_input,
+                key=model_key,
             ),
         )
 
@@ -233,25 +247,18 @@ def main(argv=None):
             )
         )
 
-        # Generate new RNG keys:
-        train_step_keys = jax.random.split(
-            env_key,
-            (num_envs * episode_length),
-        )
-        train_step_keys = jnp.reshape(
-            train_step_keys,
-            (num_envs, episode_length, train_step_keys.shape[-1]),
-        )
-
         # Update Function:
         model_state, loss = model_utilities.train_step(
-            model_state,
-            model_input_episode,
-            actions_episode,
-            advantage_episode,
-            returns_episode,
-            log_probability_episode,
-            keys_episode,
+            model_state=model_state,
+            model_input=model_input_episode,
+            actions=actions_episode,
+            advantages=advantage_episode,
+            returns=returns_episode,
+            previous_log_probability=log_probability_episode,
+            keys=keys_episode,
+            batch_size=num_envs,
+            episode_length=episode_length,
+            ppo_steps=ppo_steps,
         )
 
         average_reward = np.mean(
@@ -273,57 +280,44 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
-        if iteration % 25 == 0:
-            visualize_batches = 16
-            visualizer.generate_batch_video(
-                env=env,
-                states=state_history,
-                batch_size=visualize_batches,
-                name=f'cartpole_training_{iteration}'
-            )
+        if visualize_flag:
+            if iteration % 25 == 0:
+                visualize_batches = 16
+                visualizer.generate_batch_video(
+                    env=env,
+                    states=state_history,
+                    batch_size=visualize_batches,
+                    name=f'cartpole_training_{iteration}'
+                )
 
         current_learning_rate = model_state.opt_state.hyperparams['learning_rate']
         print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Learning Rate: {current_learning_rate}')
 
+        # Save Metrics:
+        reward_history.append(rewards_episode)
+        values_history.append(values_episode)
+        mask_history.append(masks_episode)
+        loss_history.append(loss)
+
     print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
 
-    state_history = []
-    states = reset_fn(env_key)
-    state_history.append(states)
-    for _ in range(episode_length):
-        key, env_key = jax.random.split(env_key)
-        model_input = states.obs
-        mean, std, values = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-            )
-        )
-        actions, _, _ = jax.lax.stop_gradient(
-            model_utilities.select_action(
-                mean,
-                std,
-                env_key,
-            )
-        )
-        states = jax.lax.stop_gradient(
-            step_fn(
-                states,
-                actions,
-                env_key,
-            )
-        )
-        state_history.append(states)
+    checkpoint_path = os.path.join(filepath, "./checkpoints")
+    save_checkpoint.save_checkpoint(state=model_state, path=checkpoint_path)
 
-    visualize_batches = 16
-    visualizer.generate_batch_video(
-        env=env,
-        states=state_history,
-        batch_size=visualize_batches,
-        name=f'./videos/puck_simulation_{iteration}'
-    )
-
-
+    # Pickle Metrics:
+    metrics_path = os.path.join(filepath, "./metrics")
+    with open(metrics_path + "/metrics.pkl", "wb") as f:
+        pickle.dump(
+            {
+                "reward_history": reward_history,
+                "values_history": values_history,
+                "mask_history": mask_history,
+                "loss_history": loss_history,
+            },
+            f,
+        )
+    
+    
+    
 if __name__ == '__main__':
     app.run(main)

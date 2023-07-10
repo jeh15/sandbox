@@ -1,3 +1,5 @@
+import os
+import pickle
 from absl import app
 from typing import Optional
 
@@ -14,6 +16,7 @@ import model_utilities
 import cartpole
 import custom_wrapper
 import visualize_cartpole as visualizer
+import save_checkpoint
 
 jax.config.update("jax_enable_x64", True)
 
@@ -51,7 +54,7 @@ def init_params(module, input_size, key):
     params = module.init(
         key,
         jnp.ones(input_size),
-    )['params']
+    )["params"]
     return params
 
 
@@ -81,19 +84,22 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    num_envs = 512
+    num_envs = 128
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
-        backend='generalized'
+        backend="generalized",
     )
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
 
     # Initize Networks:
     initial_key = jax.random.PRNGKey(key_seed)
+
+    # Filepath:
+    filepath = os.path.dirname(__file__)
 
     # Vmap Network:
     network = model.ActorCriticNetworkVmap(
@@ -126,6 +132,12 @@ def main(argv=None):
     # Test Environment:
     training_length = 500
     key, env_key = jax.random.split(initial_key)
+    visualize_flag = False
+    # Metrics:
+    reward_history = []
+    values_history = []
+    mask_history = []
+    loss_history = []
     for iteration in range(training_length):
         states = reset_fn(env_key)
         state_history = []
@@ -169,25 +181,39 @@ def main(argv=None):
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
-            jnp.asarray(states_episode), axis1=1, axis2=0,
+            jnp.asarray(states_episode),
+            axis1=1,
+            axis2=0,
         )
         values_episode = jnp.swapaxes(
-            jnp.asarray(values_episode), axis1=1, axis2=0,
+            jnp.asarray(values_episode),
+            axis1=1,
+            axis2=0,
         )
         log_probability_episode = jnp.swapaxes(
-            jnp.asarray(log_probability_episode), axis1=1, axis2=0,
+            jnp.asarray(log_probability_episode),
+            axis1=1,
+            axis2=0,
         )
         actions_episode = jnp.swapaxes(
-            jnp.asarray(actions_episode), axis1=1, axis2=0,
+            jnp.asarray(actions_episode),
+            axis1=1,
+            axis2=0,
         )
         rewards_episode = jnp.swapaxes(
-            jnp.asarray(rewards_episode), axis1=1, axis2=0,
+            jnp.asarray(rewards_episode),
+            axis1=1,
+            axis2=0,
         )
         masks_episode = jnp.swapaxes(
-            jnp.asarray(masks_episode), axis1=1, axis2=0,
+            jnp.asarray(masks_episode),
+            axis1=1,
+            axis2=0,
         )
         model_input_episode = jnp.swapaxes(
-            jnp.asarray(model_input_episode), axis1=1, axis2=0,
+            jnp.asarray(model_input_episode),
+            axis1=1,
+            axis2=0,
         )
 
         # No Gradient Calculation:
@@ -237,63 +263,56 @@ def main(argv=None):
                 (values_episode),
                 axis=1,
             ),
-            axis=0
+            axis=0,
         )
 
         if average_reward >= best_reward:
             best_reward = average_reward
             best_iteration = iteration
 
-        if iteration % 25 == 0:
-            visualize_batches = 16
-            visualizer.generate_batch_video(
-                env=env,
-                states=state_history,
-                batch_size=visualize_batches,
-                name=f'cartpole_training_{iteration}'
-            )
+        if visualize_flag:
+            if iteration % 25 == 0:
+                visualize_batches = 16
+                visualizer.generate_batch_video(
+                    env=env,
+                    states=state_history,
+                    batch_size=visualize_batches,
+                    name=f"cartpole_training_{iteration}",
+                )
 
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value}')
-
-    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
-
-    state_history = []
-    states = reset_fn(env_key)
-    state_history.append(states)
-    for _ in range(episode_length):
-        key, env_key = jax.random.split(env_key)
-        model_input = states.obs
-        mean, std, values = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
-                model_state.params,
-                model_state.apply_fn,
-                model_input,
-            )
+        print(
+            f"Epoch: {iteration} \t" +
+            f"Average Reward: {average_reward} \t" +
+            f"Loss: {loss} \t" +
+            f"Average Value: {average_value}"
         )
-        actions, _, _ = jax.lax.stop_gradient(
-            model_utilities.select_action(
-                mean,
-                std,
-                env_key,
-            )
-        )
-        states = jax.lax.stop_gradient(
-            step_fn(
-                states,
-                actions,
-                env_key,
-            )
-        )
-        state_history.append(states)
+        # Save Metrics:
+        reward_history.append(rewards_episode)
+        values_history.append(values_episode)
+        mask_history.append(masks_episode)
+        loss_history.append(loss)
 
-    visualize_batches = 16
-    visualizer.generate_batch_video(
-        env=env,
-        states=state_history,
-        batch_size=visualize_batches,
-        name=f'./videos/puck_simulation_{iteration}'
+    print(
+        f"The best reward of {best_reward} was achieved at iteration {best_iteration}"
     )
+    
+    checkpoint_path = os.path.join(filepath, "./checkpoints")
+    save_checkpoint.save_checkpoint(state=model_state, path=checkpoint_path)
+
+    # Pickle Metrics:
+    metrics_path = os.path.join(filepath, "./metrics")
+    with open(metrics_path + "/metrics.pkl", "wb") as f:
+        pickle.dump(
+            {
+                "reward_history": reward_history,
+                "values_history": values_history,
+                "mask_history": mask_history,
+                "loss_history": loss_history,
+            },
+            f,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(main)
+

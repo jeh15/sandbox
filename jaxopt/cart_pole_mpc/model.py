@@ -6,6 +6,7 @@ from brax.positional import pipeline
 import distrax
 
 jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 class ActorCriticNetwork(nn.Module):
@@ -13,7 +14,6 @@ class ActorCriticNetwork(nn.Module):
     env: brax.positional.base.State
 
     def setup(self):
-        dtype = jnp.float64
         features = 128
         self.pipeline_layer_1 = nn.Dense(
             features=features,
@@ -38,6 +38,31 @@ class ActorCriticNetwork(nn.Module):
         self.pipeline_layer_9 = nn.Dense(
             features=features,
             name='pipeline_layer_9',
+            dtype=dtype,
+        )
+        self.pipeline_layer_11 = nn.Dense(
+            features=features,
+            name='pipeline_layer_11',
+            dtype=dtype,
+        )
+        self.pipeline_layer_13 = nn.Dense(
+            features=features,
+            name='pipeline_layer_13',
+            dtype=dtype,
+        )
+        self.pipeline_layer_15 = nn.Dense(
+            features=features,
+            name='pipeline_layer_15',
+            dtype=dtype,
+        )
+        self.pipeline_layer_17 = nn.Dense(
+            features=features,
+            name='pipeline_layer_17',
+            dtype=dtype,
+        )
+        self.pipeline_layer_19 = nn.Dense(
+            features=features,
+            name='pipeline_layer_19',
             dtype=dtype,
         )
         self.dense_1 = nn.Dense(
@@ -95,6 +120,31 @@ class ActorCriticNetwork(nn.Module):
             name='pipeline_layer_10',
             dtype=dtype,
         )
+        self.pipeline_layer_12 = nn.Dense(
+            features=2,
+            name='pipeline_layer_12',
+            dtype=dtype,
+        )
+        self.pipeline_layer_14 = nn.Dense(
+            features=2,
+            name='pipeline_layer_14',
+            dtype=dtype,
+        )
+        self.pipeline_layer_16 = nn.Dense(
+            features=2,
+            name='pipeline_layer_16',
+            dtype=dtype,
+        )
+        self.pipeline_layer_18 = nn.Dense(
+            features=2,
+            name='pipeline_layer_18',
+            dtype=dtype,
+        )
+        self.pipeline_layer_20 = nn.Dense(
+            features=2,
+            name='pipeline_layer_20',
+            dtype=dtype,
+        )
         self.mean_layer = nn.Dense(
             features=self.action_space,
             name='mean_layer',
@@ -115,7 +165,6 @@ class ActorCriticNetwork(nn.Module):
         step_pipeline = lambda x, i: pipeline.step(self.env, x, i)
         self.step_pipeline = jax.jit(step_pipeline)
 
-    # Small Network:
     def model(self, x, key):
         # Limit Output Range:
         range_limit = 0.5
@@ -126,89 +175,145 @@ class ActorCriticNetwork(nn.Module):
         state = self.init_pipeline(q, qd)
 
         # Pipeline Layer 1:
-        i = self.pipeline_layer_1(x)
-        i = nn.tanh(i)
-        # Output Mean and Std:
-        i = self.pipeline_layer_2(i)
-        i_mu = range_limit * nn.tanh(i[0])
-        i_std = nn.sigmoid(i[1])
-        # Sample Action:
-        probability_distribution = distrax.Normal(loc=i_mu, scale=i_std)
-        i = probability_distribution.sample(seed=key)
-        state = self.step_pipeline(state, i)
+        x = self.pipeline_layer_1(x)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_2(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
         state_1 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 2:
-        j = self.pipeline_layer_3(state_1)
-        j = nn.tanh(j)
-        j = self.pipeline_layer_4(j)
-        j_mu = range_limit * nn.tanh(j[0])
-        j_std = nn.sigmoid(j[1])
-        probability_distribution = distrax.Normal(loc=j_mu, scale=j_std)
-        j = probability_distribution.sample(seed=key)
-        state = self.step_pipeline(state, j)
+        x = self.pipeline_layer_3(state_1)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_4(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
         state_2 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 3:
-        k = self.pipeline_layer_5(state_2)
-        k = nn.tanh(k)
-        k = self.pipeline_layer_6(k)
-        k_mu = range_limit * nn.tanh(k[0])
-        k_std = nn.sigmoid(k[1])
-        probability_distribution = distrax.Normal(loc=k_mu, scale=k_std)
-        k = probability_distribution.sample(seed=key)
-        state = self.step_pipeline(state, k)
+        x = self.pipeline_layer_5(state_2)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_6(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
         state_3 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 4:
-        l = self.pipeline_layer_7(state_3)
-        l = nn.tanh(l)
-        l = self.pipeline_layer_8(l)
-        l_mu = range_limit * nn.tanh(l[0])
-        l_std = nn.sigmoid(l[1])
-        probability_distribution = distrax.Normal(loc=l_mu, scale=l_std)
-        l = probability_distribution.sample(seed=key)
-        state = self.step_pipeline(state, l)
+        x = self.pipeline_layer_7(state_3)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_8(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
         state_4 = jnp.concatenate([state.q, state.qd])
 
         # Pipeline Layer 5:
-        m = self.pipeline_layer_9(state_4)
-        m = nn.tanh(m)
-        m = self.pipeline_layer_10(m)
-        m_mu = range_limit * nn.tanh(m[0])
-        m_std = nn.sigmoid(m[1])
-        probability_distribution = distrax.Normal(loc=m_mu, scale=m_std)
-        m = probability_distribution.sample(seed=key)
-        state = self.step_pipeline(state, m)
+        x = self.pipeline_layer_9(state_4)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_10(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
         state_5 = jnp.concatenate([state.q, state.qd])
+
+        # Pipeline Layer 6:
+        x = self.pipeline_layer_11(state_5)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_12(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        state_6 = jnp.concatenate([state.q, state.qd])
+
+        # Pipeline Layer 7:
+        x = self.pipeline_layer_13(state_6)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_14(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        state_7 = jnp.concatenate([state.q, state.qd])
+
+        # Pipeline Layer 8:
+        x = self.pipeline_layer_15(state_7)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_16(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        state_8 = jnp.concatenate([state.q, state.qd])
+
+        # Pipeline Layer 9:
+        x = self.pipeline_layer_17(state_8)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_18(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        state_9 = jnp.concatenate([state.q, state.qd])
+
+        # Pipeline Layer 10:
+        x = self.pipeline_layer_19(state_9)
+        x = nn.tanh(x)
+        x = self.pipeline_layer_20(x)
+        x_mu = range_limit * nn.tanh(x[0])
+        x_std = nn.sigmoid(x[1])
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        state_10 = jnp.concatenate([state.q, state.qd])
 
         # Trajectory:
         state_trajectory = jnp.concatenate(
-            [state_1, state_2, state_3, state_4, state_5],
+            [
+                state_1, state_2, state_3, state_4, state_5,
+                state_6, state_7, state_8, state_9, state_10,
+            ],
         )
 
         # Mean Layer:
-        n = self.dense_1(state_trajectory)
-        n = nn.tanh(n)
-        n = self.dense_2(n)
-        n = nn.tanh(n)
+        i = self.dense_1(state_trajectory)
+        i = nn.tanh(i)
+        i = self.dense_2(i)
+        i = nn.tanh(i)
         # Standard Deviation Layer:
-        o = self.dense_3(state_trajectory)
-        o = nn.tanh(o)
-        o = self.dense_4(o)
-        o = nn.tanh(o)
+        j = self.dense_3(state_trajectory)
+        j = nn.tanh(j)
+        j = self.dense_4(j)
+        j = nn.tanh(j)
         # Value Layer:
-        p = self.dense_5(state_trajectory)
-        p = nn.tanh(p)
-        p = self.dense_6(p)
-        p = nn.tanh(p)
+        k = self.dense_5(state_trajectory)
+        k = nn.tanh(k)
+        k = self.dense_6(k)
+        k = nn.tanh(k)
 
         # Output Layer:
-        mean = self.mean_layer(n)
+        mean = self.mean_layer(i)
         mean = range_limit * nn.tanh(mean)
-        std = self.std_layer(o)
+        std = self.std_layer(j)
         std = nn.sigmoid(std)
-        values = self.value_layer(p)
+        values = self.value_layer(k)
         return mean, std, values
 
     def __call__(self, x, key):
