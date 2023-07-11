@@ -306,6 +306,13 @@ def main(argv=None):
                 name=f"ur5e_training_{iteration}",
             )
 
+            visualize.generate_batch_video(
+                env=env,
+                states=states_episode,
+                batch_size=num_envs,
+                name=f"ur5e_training_{iteration}",
+            )
+
         current_learning_rate = model_state.opt_state.hyperparams["learning_rate"]
         print(
             f"Epoch: {iteration} \t Average Reward: {average_reward} \t "
@@ -320,3 +327,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     app.run(main)
+
