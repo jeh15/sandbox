@@ -307,3 +307,6 @@ bazel-*
 .bazelversion
 # User-specific .bazelrc
 user.bazelrc
+
+# Pickle files
+*.pkl
