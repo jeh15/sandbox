@@ -56,6 +56,11 @@ class ActorCriticNetwork(nn.Module):
             name='mean_layer',
             dtype=dtype,
         )
+        self.mean_layer = nn.Dense(
+            features=self.action_space,
+            name='mean_layer',
+            dtype=dtype,
+        )
         self.std_layer = nn.Dense(
             features=self.action_space,
             name='std_layer',

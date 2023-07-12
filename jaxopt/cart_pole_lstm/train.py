@@ -227,7 +227,6 @@ def main(argv=None):
         )
 
         # No Gradient Calculation:
-        model_input = states.obs
         _, _, values = jax.lax.stop_gradient(
             model_utilities.forward_pass(
                 model_state.params,
@@ -308,7 +307,7 @@ def main(argv=None):
     print(
         f"The best reward of {best_reward} was achieved at iteration {best_iteration}"
     )
-
+    
     checkpoint_path = os.path.join(filepath, "./checkpoints")
     save_checkpoint.save_checkpoint(state=model_state, path=checkpoint_path)
 
