@@ -13,7 +13,8 @@ import brax
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
-import model
+# import model
+import model_lift as model
 import model_utilities
 import cartpole
 import custom_wrapper
@@ -111,7 +112,8 @@ def main(argv=None):
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.num_actions,
-        env=pipeline_model,
+        nodes=5,
+        pipeline_state=pipeline_model,
     )
 
     initial_params = init_params(
@@ -126,7 +128,7 @@ def main(argv=None):
     transition_steps = 100
     transition_begin = 100
     ppo_steps = 10
-    training_length = 500
+    training_length = 200
 
     # Create a train state:
     schedule = optax.linear_schedule(

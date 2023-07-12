@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 def main(argv=None):
     # Load Metrics:
     filepath = os.path.dirname(os.path.abspath(__file__))
-    metrics_ppo_path = os.path.join(filepath, "metrics_ppo_v2.pkl")
+    metrics_ppo_path = os.path.join(filepath, "metrics_shared.pkl")
     metrics_mpc_path = os.path.join(filepath, "metrics_mpc_v2.pkl")
 
     with open(metrics_ppo_path, "rb") as f:
@@ -42,14 +42,14 @@ def main(argv=None):
     fig, ax = plt.subplots(2)
     fig.tight_layout(pad=4.0)
 
-    ax[0].plot(reward_ppo, label='Pure PPO', color='darkorange', linewidth=2)
+    ax[0].plot(reward_ppo, label='MPC Shared', color='darkorange', linewidth=2)
     ax[0].plot(reward_mpc, label='MPC Layer', color='cornflowerblue', linewidth=2)
     ax[0].set_title("Total Reward per Episode (avg. across batch)", fontsize=12)
     ax[0].set_xlabel("Epoch", fontsize=10)
     ax[0].set_ylabel("Total Episode Reward", fontsize=10)
     ax[0].legend(fontsize=8)
 
-    ax[1].plot(loss_history_ppo, label='Pure PPO', color='darkorange', linewidth=2)
+    ax[1].plot(loss_history_ppo, label='MPC Shared', color='darkorange', linewidth=2)
     ax[1].plot(loss_history_mpc, label='MPC Layer', color='cornflowerblue', linewidth=2)
     ax[1].set_title("Loss", fontsize=12)
     ax[1].set_xlabel("Epoch", fontsize=10)
