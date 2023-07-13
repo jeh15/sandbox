@@ -3,7 +3,6 @@ from typing import Tuple, Any
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
-import brax
 from brax import base
 from brax.positional import pipeline
 import distrax
@@ -13,6 +12,110 @@ PRNGKey = Any
 jax.config.update("jax_enable_x64", True)
 dtype = jnp.float64
 
+range_limit = 0.5
+
+
+class _MPCCell(nn.Module):
+    """
+        Module for scan function for the MPC cell.
+    """
+    features: int
+    pipeline_state: base.State
+
+    def setup(self) -> None:
+        self.shared_layer_1 = nn.Dense(
+            features=self.features,
+            name='shared_layer_1',
+            dtype=dtype,
+        )
+        self.shared_layer_2 = nn.Dense(
+            features=self.features,
+            name='shared_layer_2',
+            dtype=dtype,
+        )
+        self.policy_mean_1 = nn.Dense(
+            features=self.features,
+            name='policy_mean_1',
+            dtype=dtype,
+        )
+        self.policy_mean_2 = nn.Dense(
+            features=1,
+            name='policy_mean_2',
+            dtype=dtype,
+        )
+        self.policy_std_1 = nn.Dense(
+            features=self.features,
+            name='policy_std_1',
+            dtype=dtype,
+        )
+        self.policy_std_2 = nn.Dense(
+            features=1,
+            name='policy_std_2',
+            dtype=dtype,
+        )
+        step_pipeline = lambda x, i: pipeline.step(self.pipeline_state, x, i)
+        self.step_pipeline = jax.jit(step_pipeline)
+
+    def __call__(
+        self,
+        carry: Tuple[jax.Array, base.State, PRNGKey],
+        xs: None,
+    ) -> Tuple[Tuple[jnp.ndarray, base.State, PRNGKey], jnp.ndarray]:
+        x, state, key = carry
+        x = self.shared_layer_1(x)
+        x = nn.tanh(x)
+        x = self.shared_layer_2(x)
+        x = nn.tanh(x)
+        x_mu = self.policy_mean_1(x)
+        x_mu = nn.tanh(x_mu)
+        x_mu = self.policy_mean_2(x_mu)
+        x_mu = range_limit * nn.tanh(x_mu)
+        x_std = self.policy_std_1(x)
+        x_std = nn.sigmoid(x_std)
+        x_std = self.policy_std_2(x_std)
+        x_std = nn.sigmoid(x_std)
+        probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
+        x = probability_distribution.sample(seed=key)
+        state = self.step_pipeline(state, x)
+        x = jnp.concatenate([state.q, state.qd])
+        _, key = jax.random.split(key)
+        carry = x, state, key
+        data = x
+        return carry, data
+
+
+class MPCCell(nn.Module):
+    features: int
+    nodes: int
+    pipeline_state: base.State
+
+    def setup(self):
+        # Initialize Pipeline:
+        init_pipeline = lambda x, i: pipeline.init(self.pipeline_state, x, i)
+        self.init_pipeline = jax.jit(init_pipeline)
+        # Create Scan Function:
+        scan_fn = nn.scan(
+            _MPCCell,
+            variable_broadcast='params',
+            split_rngs={'params': False},
+            in_axes=0,
+            out_axes=0,
+            length=self.nodes,
+        )
+        self.scan = scan_fn(self.features, self.pipeline_state)
+
+    def __call__(self, x, key) -> jnp.ndarray:
+        # Initialize Pipeline State:
+        q = x[:2]
+        qd = x[2:]
+        state = self.init_pipeline(q, qd)
+
+        # Run Scan Function:
+        carry = x, state, key
+        carry, data = self.scan(carry, None)
+
+        return jnp.concatenate(data)
+
 
 class ActorCriticNetwork(nn.Module):
     action_space: int
@@ -21,16 +124,6 @@ class ActorCriticNetwork(nn.Module):
 
     def setup(self):
         features = 128
-        self.mpc_layer_1 = nn.Dense(
-            features=features,
-            name='mpc_layer_1',
-            dtype=dtype,
-        )
-        self.mpc_layer_2 = nn.Dense(
-            features=features,
-            name='mpc_layer_2',
-            dtype=dtype,
-        )
         self.dense_1 = nn.Dense(
             features=features,
             name='dense_1',
@@ -76,46 +169,15 @@ class ActorCriticNetwork(nn.Module):
             name='value_layer',
             dtype=dtype,
         )
-        init_pipeline = lambda x, i: pipeline.init(self.pipeline_state, x, i)
-        self.init_pipeline = jax.jit(init_pipeline)
-        step_pipeline = lambda x, i: pipeline.step(self.pipeline_state, x, i)
-        self.step_pipeline = jax.jit(step_pipeline)
+        self.MPCCell = MPCCell(
+            features=features,
+            nodes=self.nodes,
+            pipeline_state=self.pipeline_state,
+        )
 
     def model(self, x, key):
-        def MPCCell(
-            carry: Tuple[jax.Array, base.State, PRNGKey],
-            xs: None,
-        ) -> Tuple[Tuple[jnp.ndarray, base.State, PRNGKey], jnp.ndarray]:
-            x, state, key = carry
-            x = self.mpc_layer_1(x)
-            x = nn.tanh(x)
-            x = self.mpc_layer_2(x)
-            x_mu = nn.tanh(x[0])
-            x_std = nn.sigmoid(x[1])
-            probability_distribution = distrax.Normal(loc=x_mu, scale=x_std)
-            x = probability_distribution.sample(seed=key)
-            state = self.step_pipeline(state, x)
-            x = jnp.concatenate([state.q, state.qd])
-            _, key = jax.random.split(key)
-            carry = x, state, key
-            data = x
-            return carry, data
-
-        # Create Initial Pipeline State:
-        q = x[:2]
-        qd = x[2:]
-        state = self.init_pipeline(q, qd)
-
-        # Scan MPC Block:
-        carry, data = jax.lax.scan(
-            f=MPCCell,
-            init=(x, state, key),
-            xs=None,
-            length=self.nodes,
-        )
-        x = data
-        # Trajectory:
-        state_trajectory = x
+        # Run MPC Block:
+        state_trajectory = self.MPCCell(x, key)
 
         # Mean Layer:
         i = self.dense_1(state_trajectory)
@@ -135,7 +197,7 @@ class ActorCriticNetwork(nn.Module):
 
         # Output Layer:
         mean = self.mean_layer(i)
-        mean = nn.tanh(mean)
+        mean = range_limit * nn.tanh(mean)
         std = self.std_layer(j)
         std = nn.sigmoid(std)
         values = self.value_layer(k)

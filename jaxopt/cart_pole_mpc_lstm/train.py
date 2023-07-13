@@ -13,8 +13,7 @@ import brax
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
-# import model
-import model_lift as model
+import model
 import model_utilities
 import cartpole
 import custom_wrapper
