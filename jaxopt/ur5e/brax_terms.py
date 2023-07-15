@@ -31,14 +31,13 @@ def main(argv=None):
 
     step_fn = jax.jit(pipeline.step)
 
-    gravity_compensation = inverse(
-        sys=pipeline_model,
-        state=state,
-    )
-
     simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
+        gravity_compensation = inverse(
+            sys=pipeline_model,
+            state=state,
+        ) 
         state = step_fn(pipeline_model, state, gravity_compensation)
         state_history.append(state)
 
