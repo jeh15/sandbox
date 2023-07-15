@@ -109,12 +109,18 @@ class MPCCell(nn.Module):
         q = x[:2]
         qd = x[2:]
         state = self.init_pipeline(q, qd)
+        initial_condition = jnp.concatenate([state.q, state.qd])
 
         # Run Scan Function:
         carry = x, state, key
         carry, data = self.scan(carry, None)
 
-        return jnp.concatenate(data)
+        # Concatenate State Trajectory:
+        predicted_state_trajectory = jnp.concatenate(data)
+        state_trajectory = jnp.concatenate(
+            [initial_condition, predicted_state_trajectory],
+        )
+        return state_trajectory
 
 
 class ActorCriticNetwork(nn.Module):
@@ -124,6 +130,17 @@ class ActorCriticNetwork(nn.Module):
 
     def setup(self):
         features = 128
+        MPC_features = 128
+        self.shared_layer_1 = nn.Dense(
+            features=features,
+            name='shared_layer_1',
+            dtype=dtype,
+        )
+        self.shared_layer_2 = nn.Dense(
+            features=features,
+            name='shared_layer_2',
+            dtype=dtype,
+        )
         self.dense_1 = nn.Dense(
             features=features,
             name='dense_1',
@@ -170,27 +187,38 @@ class ActorCriticNetwork(nn.Module):
             dtype=dtype,
         )
         self.MPCCell = MPCCell(
-            features=features,
+            features=MPC_features,
             nodes=self.nodes,
             pipeline_state=self.pipeline_state,
         )
 
     def model(self, x, key):
+        """
+            What I changed...
+            state_trajectory now includes the initial condition.
+            Added a shared layer before the mean, std, and value layers.
+        """
         # Run MPC Block:
         state_trajectory = self.MPCCell(x, key)
 
+        # Shared Layer:
+        x = self.shared_layer_1(state_trajectory)
+        x = nn.tanh(x)
+        x = self.shared_layer_2(x)
+        x = nn.tanh(x)
+
         # Mean Layer:
-        i = self.dense_1(state_trajectory)
+        i = self.dense_1(x)
         i = nn.tanh(i)
         i = self.dense_2(i)
         i = nn.tanh(i)
         # Standard Deviation Layer:
-        j = self.dense_3(state_trajectory)
+        j = self.dense_3(x)
         j = nn.tanh(j)
         j = self.dense_4(j)
         j = nn.tanh(j)
         # Value Layer:
-        k = self.dense_5(state_trajectory)
+        k = self.dense_5(x)
         k = nn.tanh(k)
         k = self.dense_6(k)
         k = nn.tanh(k)

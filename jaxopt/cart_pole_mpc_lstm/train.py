@@ -127,7 +127,6 @@ def main(argv=None):
     transition_steps = 100
     transition_begin = 100
     ppo_steps = 10
-    training_length = 200
 
     # Create a train state:
     schedule = optax.linear_schedule(
@@ -145,6 +144,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
+    training_length = 300
     key, env_key = jax.random.split(initial_key)
     visualize_flag = False
     # Metrics:
@@ -313,7 +313,7 @@ def main(argv=None):
 
     # Pickle Metrics:
     metrics_path = os.path.join(filepath, "./metrics")
-    with open(metrics_path + "/metrics.pkl", "wb") as f:
+    with open(metrics_path + "/metrics_mpc_v3.pkl", "wb") as f:
         pickle.dump(
             {
                 "reward_history": reward_history,
