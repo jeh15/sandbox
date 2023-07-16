@@ -30,11 +30,12 @@ def main(argv=None):
     )
 
     step_fn = jax.jit(pipeline.step)
-
+    inverse_dynamics = jax.jit(inverse)
+    
     simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
-        gravity_compensation = inverse(
+        gravity_compensation = inverse_dynamics(
             sys=pipeline_model,
             state=state,
         ) 
