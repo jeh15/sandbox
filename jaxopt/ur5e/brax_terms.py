@@ -30,21 +30,35 @@ def main(argv=None):
         jnp.zeros_like(initial_q, dtype=jnp.float32),
     )
 
-    C = utilities.calculate_coriolis_matrix(
-        sys=pipeline_model,
-        state=state,
-    )
     step_fn = jax.jit(pipeline.step)
     inverse_dynamics = jax.jit(inverse)
 
     simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
-        gravity_compensation = inverse_dynamics(
+        zero_state = jax.jit(pipeline.init)(
+            pipeline_model,
+            state.q,
+            jnp.zeros_like(state.q, dtype=jnp.float32),
+        )
+        bias = inverse_dynamics(
+            sys=pipeline_model,
+            state=zero_state,
+        )
+        tau = inverse_dynamics(
             sys=pipeline_model,
             state=state,
-        ) 
-        state = step_fn(pipeline_model, state, gravity_compensation)
+        )
+        mass_matrix = jax.jit(matrix)(
+            sys=pipeline_model,
+            state=state,
+        )
+        M_qdd = mass_matrix @ state.qdd
+        custom_bias = jax.jit(utilities.calculate_coriolis_matrix)(
+            sys=pipeline_model,
+            state=state,
+        )
+        state = step_fn(pipeline_model, state, bias)
         state_history.append(state)
 
     visualize.create_video(

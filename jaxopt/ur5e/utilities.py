@@ -22,6 +22,14 @@ def calculate_coriolis_matrix(
 
   Returns:
     tau: generalized forces resulting from joint positions and velocities
+
+  ----
+  q - joint angle
+  qd - joint velocity
+  qdd - joint acceleration
+  ----
+  cdof - dofs in com frame (spatial velocity) -- [omega, v]
+  cdofd - velocity of dofs in com frame (spatial acceleration) -- [omega_d, v_d]
   """
   # forward scan over tree: accumulate link center of mass acceleration
   def cdd_fn(cdd_parent, cdofd, qd, dof_idx):
@@ -30,19 +38,29 @@ def calculate_coriolis_matrix(
       cdd_parent = Motion.create(vel=-jnp.tile(sys.gravity, (num_roots, 1)))
 
     # cdd = cdd[parent] + map-sum(cdofd * qd)
+    # a_i = a_(i-1) + sd_i * qd_i
     cdd = cdd_parent.index_sum(dof_idx, jax.vmap(lambda x, y: x * y)(cdofd, qd))
 
     return cdd
 
-  cdd = scan.tree(
-      sys, cdd_fn, 'ddd', state.cdofd, state.qd, sys.dof_link(depth=True)
+  zero_motion_vector = brax.Motion.create(
+    ang=jnp.zeros_like(state.cdofd.ang),
+    vel=jnp.zeros_like(state.cdofd.vel),
   )
-
+  zero_joint_velocity = jnp.zeros_like(state.qd)
+  # cdd = scan.tree(
+  #     sys, cdd_fn, 'ddd', state.cdofd, state.qd, sys.dof_link(depth=True)
+  # )
+  cdd = scan.tree(
+      sys, cdd_fn, 'ddd', zero_motion_vector, zero_joint_velocity, sys.dof_link(depth=True)
+  )
   # cfrc_flat = cinr * cdd + cd x (cinr * cd)
   def frc(cinr, cdd, cd):
     return cinr.mul(cdd) + cd.cross(cinr.mul(cd))
 
-  cfrc_flat = jax.vmap(frc)(state.cinr, cdd, state.cd)
+  # To make cd zero do same thing as zero_motion_vector
+  # cfrc_flat = jax.vmap(frc)(state.cinr, cdd, state.cd)
+  cfrc_flat = jax.vmap(frc)(state.cinr, cdd, zero_motion_vector)
 
   # backward scan up tree: accumulate link center of mass forces
   def cfrc_fn(cfrc_child, cfrc):
