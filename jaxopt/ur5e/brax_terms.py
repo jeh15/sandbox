@@ -9,6 +9,7 @@ from brax.generalized.mass import matrix, matrix_inv
 import jax
 import jax.numpy as jnp
 
+import utilities
 import visualize
 
 
@@ -29,9 +30,13 @@ def main(argv=None):
         jnp.zeros_like(initial_q, dtype=jnp.float32),
     )
 
+    C = utilities.calculate_coriolis_matrix(
+        sys=pipeline_model,
+        state=state,
+    )
     step_fn = jax.jit(pipeline.step)
     inverse_dynamics = jax.jit(inverse)
-    
+
     simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
@@ -49,9 +54,7 @@ def main(argv=None):
         height=720,
         name="ur5e_simulation",
     )
-    
 
 
 if __name__ == '__main__':
     app.run(main)
-
