@@ -149,7 +149,13 @@ def calculate_gravity_forces(
         state.cinr.mass,
     )
     
-    composite_spatial_inertias = jnp.cumsum(spatial_inertias, axis=0)
+    composite_spatial_inertias = jnp.flip(
+        jnp.cumsum(
+            jnp.flip(spatial_inertias, axis=0),
+            axis=0,
+        ),
+        axis=0,
+    )
     
     motion_subspace_fn = lambda i: jnp.concatenate(
         [state.cdof.ang[i], state.cdof.vel[i]],
