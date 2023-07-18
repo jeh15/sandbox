@@ -82,26 +82,6 @@ def calculate_coriolis_matrix(
 
     return tau
 
-def _cross_product_matrix(
-    A: jax.Array,
-) -> jnp.ndarray:
-    """Calculates the cross product matrix of a vector.
-
-    Args:
-      A: a vector
-
-    Returns:
-      A_x: the cross product matrix of A
-    """
-    A_x = jnp.array(
-        [
-            [0, -A[2], A[1]],
-            [A[2], 0, -A[0]],
-            [-A[1], A[0], 0],
-        ]
-    )
-    return A_x
-
 
 def cross_product_matrix(
     A: jax.Array,
@@ -132,6 +112,7 @@ def calculate_gravity_forces(
         gravity_vector: jax.Array,
     ) -> jnp.ndarray:
         # g = S.T @ I_o @ spatial_gravity_vector
+        # spatial_gravity_vector = promote_to_spatial_vector(-gravity_vector)
         spatial_acceleration = jnp.concatenate(
             [jnp.zeros_like(gravity_vector), -gravity_vector],
         )
@@ -157,12 +138,7 @@ def calculate_gravity_forces(
         axis=0,
     )
     
-    motion_subspace_fn = lambda i: jnp.concatenate(
-        [state.cdof.ang[i], state.cdof.vel[i]],
-    )
-    motion_subspaces = jax.vmap(motion_subspace_fn, in_axes=0, out_axes=0)(
-        jnp.arange(state.cdof.ang.shape[0]),
-    )
+    motion_subspaces = state.cdof.matrix()
     
     generalized_gravity_force = jax.vmap(
         gravity_force, in_axes=(0, 0, None), out_axes=0,
@@ -173,4 +149,120 @@ def calculate_gravity_forces(
     )
 
     return generalized_gravity_force
+
+
+def motion_cross_product(
+    v: jax.Array,
+    m: jax.Array,
+) -> jnp.ndarray:
+    vel = jnp.cross(v[:3], m[3:]) + jnp.cross(v[3:], m[:3])
+    ang = jnp.cross(v[:3], m[:3])
+    return jnp.concatenate([ang, vel])
+
+
+def force_cross_product(
+    v: jax.Array,
+    f: jax.Array,
+) -> jnp.ndarray:
+    vel = jnp.cross(v[:3], f[3:])
+    ang = jnp.cross(v[:3], f[:3]) + jnp.cross(v[3:], f[3:])
+    return jnp.concatenate([ang, vel])
+
+
+def calculate_coriolis_forces(
+    sys: System,
+    state: State,
+) -> jnp.ndarray:
+    # Zetta Function:
+    # cumsum (v_i x S_i * dq_i)
+    def _calculate_zetta(
+        spatial_velocity: jax.Array,
+        motion_subspace: jax.Array,
+        joint_velocity: jax.typing.ArrayLike,
+    ) -> jnp.ndarray:
+    # Calculate: v x S * dq
+        return motion_cross_product(spatial_velocity, motion_subspace * joint_velocity)
+   
+    # Coriolis Force Function:
+    # S_i.T reverse_cumsum (v_k x* I_k v_k + I_k zetta_k)
+    def _calculate_coriolis_force(
+        composite_spatial_velocity: jax.Array,
+        motion_subspace: jax.Array,
+        composite_spatial_inertia: jax.Array,
+        zetta: jax.Array,
+    ) -> jnp.ndarray:
+        spatial_force = composite_spatial_inertia @ composite_spatial_velocity
+        cross_product = force_cross_product(
+            composite_spatial_velocity,
+            spatial_force,
+        )
+        zetta_spatial_force = composite_spatial_inertia @ zetta
+        coriolis_force = motion_subspace.T @ (cross_product + zetta_spatial_force)
+        return coriolis_force
+
+    link_spatial_velocities = state.cd.matrix()
+    motion_subspaces = state.cdof.matrix()
+
+    # Calculate Zetta:
+    zetta = jnp.cumsum(
+        jax.vmap(_calculate_zetta, in_axes=(0, 0, 0), out_axes=0)(
+            link_spatial_velocities,
+            motion_subspaces,
+            state.qd,
+        ),
+        axis=0,
+    )
+    
+    # Calculate Coriolis Forces:
+    # C(q, qd)qd = S_i.T reverse_cumsum (v_k x* I_k v_k + I_k zetta_k)
+
+    # Calculate composite zetta: zetta_k
+    composite_zetta = jnp.flip(
+        jnp.cumsum(
+            jnp.flip(zetta, axis=0),
+            axis=0,
+        ),
+        axis=0,
+    )
+    
+    # Calculate composite spatial inertias: I_k
+    c_cross = jax.vmap(cross_product_matrix, in_axes=0, out_axes=0)(
+        state.cinr.transform.pos,
+    )
+
+    spatial_inertias = jax.vmap(
+        calculate_spatial_inertia, in_axes=(0, 0, 0), out_axes=0,
+    )(
+        state.cinr.i,
+        c_cross,
+        state.cinr.mass,
+    )
+    
+    composite_spatial_inertias = jnp.flip(
+        jnp.cumsum(
+            jnp.flip(spatial_inertias, axis=0),
+            axis=0,
+        ),
+        axis=0,
+    )
+    
+    # Calculate composite spatial velocities: v_k
+    composite_spatial_velocities = jnp.flip(
+        jnp.cumsum(
+            jnp.flip(link_spatial_velocities, axis=0),
+            axis=0,
+        ),
+        axis=0,
+    )
+
+    coriolis_forces = jax.vmap(
+        _calculate_coriolis_force, in_axes=(0, 0, 0, 0), out_axes=0,
+    )(
+        composite_spatial_velocities,
+        motion_subspaces,
+        composite_spatial_inertias,
+        composite_zetta,
+    )
+
+    return coriolis_forces
 
