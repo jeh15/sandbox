@@ -30,6 +30,7 @@
 
   <!-- Time Step = 0.01 makes model explode -->
 	<option gravity="0 0 -9.81"/>
+	<!-- <option gravity="0 0 -9.81" timestep="0.001"/> -->
   
   <size nstack="3000"/>
 
@@ -125,6 +126,7 @@
                 <geom class="collision" pos="0 0.02 0.1" quat="1 1 0 0" size="0.04 0.001"/>
                 <body name="wrist_3_link" pos="0 0 0.1">
                   <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1" diaginertia="0.000132134 9.90863e-05 9.90863e-05"/>
+                  <!-- <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1" diaginertia="9.90863e-05 9.90863e-05 0.000132134"/> -->
                   <joint name="wrist_3_joint" class="size1"/>
                   <geom material="linkgray" mesh="wrist3" class="visual"/>
                   <geom class="eef_collision" pos="0 0.08 0" quat="1 1 0 0" size="0.04 0.001"/>

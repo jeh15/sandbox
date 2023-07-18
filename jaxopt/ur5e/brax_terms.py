@@ -17,13 +17,21 @@ def main(argv=None):
     xml_path = "ur5e_model/scene.xml"
     filepath = os.path.join(os.path.dirname(__file__), xml_path)
     pipeline_model = mjcf.load(filepath)
+    
+    # Make inpuit transparent:
+    # actuator = pipeline_model.actuator.replace(
+    #     gear=jnp.ones_like(pipeline_model.actuator.gear),
+    #     bias_q=jnp.zeros_like(pipeline_model.actuator.bias_q),
+    #     bias_qd=jnp.zeros_like(pipeline_model.actuator.bias_qd),
+    #     ctrl_range=jnp.array(pipeline_model.actuator.force_range),
+    # )
+    # pipeline_model = pipeline_model.replace(actuator=actuator)
 
     # Set initial state:
     initial_q = jnp.array(
         [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
         dtype=jnp.float32,
     )
-
     state = jax.jit(pipeline.init)(
         pipeline_model,
         initial_q,
@@ -32,7 +40,7 @@ def main(argv=None):
 
     step_fn = jax.jit(pipeline.step)
     inverse_dynamics = jax.jit(inverse)
-    mass_inverse_fn = lambda sys, state: matrix_inv(sys, state, 100) 
+    mass_inverse_fn = lambda sys, state: matrix_inv(sys, state, 0) 
     mass_matrix_inverse = jax.jit(mass_inverse_fn)
     
     A = utilities.calculate_gravity_forces(
@@ -50,7 +58,7 @@ def main(argv=None):
         ddtheta_desired: jax.typing.ArrayLike,
         state: brax.base.State,
     ) -> jnp.ndarray:
-        kp = 1 * jnp.identity(state.q.shape[0])
+        kp = 100 * jnp.identity(state.q.shape[0])
         kd = 2 * jnp.sqrt(kp)
         error = theta_desired - state.q
         derror = dtheta_desired - state.qd
@@ -81,29 +89,22 @@ def main(argv=None):
             jnp.zeros_like(initial_q),
             state,
         )
-        # # Built-in:
-        # tau_bias = jax.jit(utilities.calculate_coriolis_matrix)(
-        #     pipeline_model,
-        #     state,
-        # )
-        # tau = inverse_dynamics(
-        #     pipeline_model,
-        #     state,
-        # )
-        # tau = jax.jit(forward)(
-        #     pipeline_model,
-        #     state,
-        #     -tau_bias,
-        # )
         # Custom:
         desired_acceleration = jnp.zeros_like(initial_q)
         joint_acceleration = desired_acceleration + (
             mass_inv @ (coriolis_forces - gravity_compensation)
         ).flatten()
-
-        # tau = coriolis_forces - gravity_compensation
-        tau = gravity_compensation
-        state = step_fn(pipeline_model, state, tau)
+        tau = mass_inv @ (-gravity_compensation - coriolis_forces)
+        scale_torque = (tau - pipeline_model.actuator.force_range[:, 0]) / (pipeline_model.actuator.force_range[:, 1] - pipeline_model.actuator.force_range[:, 0])
+        scale_joint = (scale_torque * (pipeline_model.actuator.ctrl_range[:, 1] - pipeline_model.actuator.ctrl_range[:, 0])) + pipeline_model.actuator.ctrl_range[:, 0]
+        # motor_tau = brax.actuator.to_tau(
+        #     pipeline_model,
+        #     tau,
+        #     state.q,
+        #     state.qd,
+        # )
+        # tau = tau / motor_tau
+        state = step_fn(pipeline_model, state, scale_joint)
         state_history.append(state)
 
     visualize.create_video(
