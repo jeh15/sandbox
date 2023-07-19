@@ -145,7 +145,7 @@ def objective_function(
         1. Linearized cos(x)
     """
 
-    # Function Approximation: TO DO
+    # Function Approximation:
     # cos(x) = cos(a) - sin(a) * (x - a)
     def func_approximation(
         x: jax.typing.ArrayLike,
@@ -212,6 +212,22 @@ def qp_preprocess(
     length: float,
     gravity: float,
 ) -> Callable:
+    """
+        A one time function to preprocess the optimization problem.
+
+        Args:
+            time_horizon: Time horizon of the optimization problem.
+            nodes: Number of nodes in the optimization problem.
+            num_states: Number of states in the optimization problem.
+            mass_cart: Mass of the cart.
+            mass_pole: Mass of the pole.
+            length: Length of the pole.
+            gravity: Gravity constant.
+
+        Returns:
+            output: Isolated functions that build the optimization problem.
+
+    """
     # Optimization Parameters:
     dt = time_horizon / (nodes - 1)
 
@@ -286,9 +302,23 @@ def qp_layer(
     nodes: int,
     num_states: int,
 ) -> jnp.ndarray:
-    # Print Statement:
-    print('Running QP Layer...')
+    """
+        Function builds and solves a QP problem.
 
+        Args:
+            initial_conditions: Initial state of the system.
+            previous_trajectory: Previous trajectory of the system (aka linerization point).
+            equaility_functions: Functions to generate equality constraints.
+            inequality_functions: Functions to generate inequality constraints.
+            objective_functions: Functions to generate objective function.
+            linearized_functions: Functions to generate linearized dynamics.
+            nodes: Number of nodes in the trajectory.
+            num_states: Number of states in the system.
+        
+        Output:
+            solution: Solution to the QP problem.
+
+    """ 
     # Unpack Functions:
     b_eq_fn, A_eq_fn = equaility_functions
     b_ineq_fn, A_ineq_fn = inequality_functions
@@ -410,8 +440,16 @@ def linearize_equations(
     num_vars: int,
 ) -> jnp.ndarray:
     """
-        q: Linearization point -> state order of [x, dx, th, dth, u]
-        dynamics_eq: isolated function handle for equations -> (ddx, ddth, obj)
+        Function linearizes the equations of motion.
+
+        Args:
+            q: Linearization point -> state order of [x, dx, th, dth, u]
+            dynamics_eq: isolated function handle for equations -> (ddx, ddth, obj)
+            num_vars: number of variables in the system.
+
+        Output:
+            output: Tuple of Tuples that contain the linearized equations.
+
     """
     # Unpack Tuple:
     f_ddx, f_ddth, f_obj = dynamics_eq
@@ -454,7 +492,17 @@ def get_nonlinear_equations(
     gravity: float,
 ) -> tuple[Callable, Callable, Callable]:
     """
-    Creates isolated function handles for cart pole acceleration equations.
+        Function creates isolated function handles for cart pole equations.
+
+        Args:
+            mass_cart: mass of cart
+            mass_pole: mass of pole
+            length: length of pole
+            gravity: gravity constant
+
+        Output:
+            output: Tuple of isolated function handles for equations -> (ddx, ddth, obj)
+
     """
     def ddx(
         q: jax.typing.ArrayLike,
