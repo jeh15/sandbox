@@ -14,18 +14,24 @@ import visualize
 
 
 def main(argv=None):
+    # Get filepath to mjcf model:
     xml_path = "ur5e_model/scene.xml"
     filepath = os.path.join(os.path.dirname(__file__), xml_path)
-    pipeline_model = mjcf.load(filepath)
-    
-    # Make inpuit transparent:
-    # actuator = pipeline_model.actuator.replace(
-    #     gear=jnp.ones_like(pipeline_model.actuator.gear),
-    #     bias_q=jnp.zeros_like(pipeline_model.actuator.bias_q),
-    #     bias_qd=jnp.zeros_like(pipeline_model.actuator.bias_qd),
-    #     ctrl_range=jnp.array(pipeline_model.actuator.force_range),
+    # xml_path = "models/universal_robots/ur5e_brax.xml"
+    # filepath = os.path.join(
+    #     os.path.dirname(
+    #         os.path.dirname(
+    #             os.path.dirname(__file__),
+    #         ),
+    #     ),
+    #     xml_path,
     # )
-    # pipeline_model = pipeline_model.replace(actuator=actuator)
+    pipeline_model = mjcf.load(filepath)
+
+    # dof = pipeline_model.dof.replace(
+    #     damping=jnp.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1]),
+    # )
+    # pipeline_model = pipeline_model.replace(dof=dof)
 
     # Set initial state:
     initial_q = jnp.array(
@@ -42,7 +48,7 @@ def main(argv=None):
     inverse_dynamics = jax.jit(inverse)
     mass_inverse_fn = lambda sys, state: matrix_inv(sys, state, 0) 
     mass_matrix_inverse = jax.jit(mass_inverse_fn)
-    
+
     A = utilities.calculate_gravity_forces(
         sys=pipeline_model,
         state=state,
@@ -68,6 +74,7 @@ def main(argv=None):
     simulation_steps = 1000
     state_history = []
     for _ in range(simulation_steps):
+        # Calculate Coriolis and Gravity Forces:
         coriolis_forces = jax.jit(utilities.calculate_coriolis_forces)(
             sys=pipeline_model,
             state=state,
@@ -76,12 +83,15 @@ def main(argv=None):
             sys=pipeline_model,
             state=state,
         )
+
+        # Calculate Mass Matrix:
         mass_state = mass_matrix_inverse(
             pipeline_model,
             state,
         )
         mass_inv = mass_state.mass_mx_inv
         mass = mass_state.mass_mx
+
         # PD Controller:
         u = jax.jit(calculate_control)(
             initial_q,
@@ -89,22 +99,14 @@ def main(argv=None):
             jnp.zeros_like(initial_q),
             state,
         )
-        # Custom:
-        desired_acceleration = jnp.zeros_like(initial_q)
-        joint_acceleration = desired_acceleration + (
-            mass_inv @ (coriolis_forces - gravity_compensation)
-        ).flatten()
-        tau = mass_inv @ (-gravity_compensation - coriolis_forces)
-        scale_torque = (tau - pipeline_model.actuator.force_range[:, 0]) / (pipeline_model.actuator.force_range[:, 1] - pipeline_model.actuator.force_range[:, 0])
-        scale_joint = (scale_torque * (pipeline_model.actuator.ctrl_range[:, 1] - pipeline_model.actuator.ctrl_range[:, 0])) + pipeline_model.actuator.ctrl_range[:, 0]
-        # motor_tau = brax.actuator.to_tau(
-        #     pipeline_model,
-        #     tau,
-        #     state.q,
-        #     state.qd,
-        # )
-        # tau = tau / motor_tau
-        state = step_fn(pipeline_model, state, scale_joint)
+
+        # Torque Control:
+        joint_acceleration = mass_inv @ (gravity_compensation - coriolis_forces)
+        qd_desired = state.qd + joint_acceleration * pipeline_model.dt
+        q_desired = state.q + qd_desired * pipeline_model.dt
+
+        # Pipeline is controlled via position control:
+        state = step_fn(pipeline_model, state, q_desired)
         state_history.append(state)
 
     visualize.create_video(

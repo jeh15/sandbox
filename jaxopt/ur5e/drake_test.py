@@ -22,8 +22,9 @@ def main(argv=None):
     meshcat = StartMeshcat()
 
     # Load URDF file:
-    # TODO: Convert .stl files to .obj files
-    xml_path = "models/universal_robots/model.urdf"
+    xml_path = "models/universal_robots/ur5e.urdf"
+    # Drake does not load mjcf correctly:
+    # xml_path = "models/universal_robots/ur5e.xml"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(
