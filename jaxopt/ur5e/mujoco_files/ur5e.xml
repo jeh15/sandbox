@@ -31,7 +31,7 @@
   <worldbody>
     <light name="spotlight" mode="targetbodycom" target="wrist_2_link" pos="0 -1 2"/>
     <body name="base" quat="1 0 0 1" childclass="ur5e">
-      <!-- <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/> -->
+      <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/>
       <body name="shoulder_link" pos="0 0 0.163">
         <inertial mass="3.7" pos="0 0 0" diaginertia="0.0102675 0.0102675 0.00666"/>
         <joint name="shoulder_pan_joint" class="size3" axis="0 0 1"/>
@@ -48,10 +48,10 @@
                 <inertial mass="1.219" pos="0 0 0.1" diaginertia="0.0025599 0.0025599 0.0021942"/>
                 <joint name="wrist_2_joint" axis="0 0 1" class="size1"/>
                 <body name="wrist_3_link" pos="0 0 0.1">
-                  <!-- <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1" -->
-                  <!--   diaginertia="0.000132134 9.90863e-05 9.90863e-05"/> -->
                   <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1"
-                    diaginertia="9.90863e-05 9.90863e-05 0.000132134"/>
+                    diaginertia="0.000132134 9.90863e-05 9.90863e-05"/>
+                  <!-- <inertial mass="0.1889" pos="0 0.0771683 0" quat="1 0 0 1" -->
+                  <!--   diaginertia="9.90863e-05 9.90863e-05 0.000132134"/> -->
                   <joint name="wrist_3_joint" class="size1"/>
                   <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
                 </body>

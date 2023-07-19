@@ -21,10 +21,17 @@ def main(argv=None):
     # Start meshcat server:
     meshcat = StartMeshcat()
 
-    # Load MJCF file:
-    # xml_path = "mujoco_files/ur5e.xml"
-    xml_path = "ur5e_model/ur5e_reduced_collision.xml"
-    filepath = os.path.join(os.path.dirname(__file__), xml_path)
+    # Load URDF file:
+    # TODO: Convert .stl files to .obj files
+    xml_path = "models/universal_robots/model.urdf"
+    filepath = os.path.join(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(__file__),
+            ),
+        ),
+        xml_path,
+    )
     
     visualizer = ModelVisualizer(meshcat=meshcat)
     visualizer.parser().AddModels(filepath)
