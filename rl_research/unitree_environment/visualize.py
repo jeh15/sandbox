@@ -7,6 +7,7 @@ from brax.base import System, State
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 from tqdm import tqdm
+from pytinyrenderer import TinyRenderCamera as Camera
 
 # Add typehint from Brax:
 Env = Any
@@ -31,6 +32,15 @@ def create_video(
         )
     )
 
+    # Create camera:
+    camera = brax.io.image.get_camera(
+        sys=sys,
+        state=states[0],
+        width=width,
+        height=height,
+        ssaa=2,
+    )
+
     # Create video writer:
     fps = 24
     rate = int(1.0 / (sys.dt * fps))
@@ -44,6 +54,7 @@ def create_video(
                 state=states[simulation_step],
                 width=width,
                 height=height,
+                camera=camera,
             )
             h.set_data(img_array)
             writer_obj.grab_frame()

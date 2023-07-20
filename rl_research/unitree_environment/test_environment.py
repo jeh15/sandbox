@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import brax
 from brax.io import mjcf
 from brax.generalized import pipeline
+from tqdm import tqdm
 
 import visualize
 
@@ -28,7 +29,12 @@ def main(argv=None):
     
     # Set initial state:
     initial_q = jnp.array(
-        [0, 0, 0.27, 1, 0, 0, 0, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
+        [0, 0, 0.27, 1, 0, 0, 0, 0, 0.9, -1.8,
+         0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
+        dtype=jnp.float32,
+    )
+    base_ctrl = jnp.array(
+        [0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
         dtype=jnp.float32,
     )
     state = jax.jit(pipeline.init)(
@@ -40,6 +46,10 @@ def main(argv=None):
     step_fn = jax.jit(pipeline.step)
 
     state_history = [state]
+    simulation_steps = 500
+    for i in tqdm(range(simulation_steps)):
+        state = step_fn(pipeline_model, state, jnp.zeros_like(base_ctrl))
+        state_history.append(state)
 
     video_filepath = os.path.join(os.path.dirname(__file__), "unitree_simulation")
     visualize.create_video(
