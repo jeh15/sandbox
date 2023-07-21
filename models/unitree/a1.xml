@@ -76,18 +76,19 @@
     <default class="a1">
       <geom friction="0.6" margin="0.001"/>
       <joint axis="0 1 0" damping="2" armature="0.01" frictionloss="0.2"/>
-      <motor forcerange="-33.5 33.5"/>
+      <general gaintype="fixed" biastype="affine" ctrlrange="-2.0 2.0" gainprm="5" biasprm="0 0 0" gear="1 0 0 0 0 0" forcerange="-33.5 33.5"/>
+      <!-- <general forcerange="-33.5 33.5"/> -->
       <default class="abduction">
         <joint axis="1 0 0" damping="1" range="-0.802851 0.802851"/>
-        <motor ctrlrange="-0.802851 0.802851"/>
+        <general ctrlrange="-2.0 2.0"/>
       </default>
       <default class="hip">
         <joint range="-1.0472 4.18879"/>
-        <motor ctrlrange="-1.0472 4.18879"/>
+        <general ctrlrange="-2.0 2.0"/>
       </default>
       <default class="knee">
         <joint range="-2.69653 -0.916298"/>
-        <motor ctrlrange="-2.69653 -0.916298"/>
+        <general ctrlrange="-2.0 2.0"/>
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="dark"/>

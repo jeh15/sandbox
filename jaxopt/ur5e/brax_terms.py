@@ -84,6 +84,11 @@ def main(argv=None):
             state=state,
         )
 
+        # Brax inverse dynamics function:
+        bias_force = inverse_dynamics(
+            pipeline_model,
+            state,
+        )
         # Calculate Mass Matrix:
         mass_state = mass_matrix_inverse(
             pipeline_model,
@@ -106,7 +111,7 @@ def main(argv=None):
         q_desired = state.q + qd_desired * pipeline_model.dt
 
         # Pipeline is controlled via position control:
-        state = step_fn(pipeline_model, state, q_desired)
+        state = step_fn(pipeline_model, state, joint_acceleration)
         state_history.append(state)
 
     visualize.create_video(
