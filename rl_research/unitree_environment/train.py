@@ -93,7 +93,7 @@ def main(argv=None):
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
-        auto_reset=True,
+        auto_reset=False,
         batch_size=num_envs,
         backend='generalized'
     )
@@ -150,7 +150,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
-    training_length = 10
+    training_length = 300
     key, env_key = jax.random.split(initial_key)
     visualize_flag = False
     checkpoint_enabled = False
@@ -193,7 +193,6 @@ def main(argv=None):
             next_states = step_fn(
                 states,
                 actions,
-                env_key,
             )
             states_episode.append(states.obs)
             values_episode.append(jnp.squeeze(values))

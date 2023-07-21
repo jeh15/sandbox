@@ -20,8 +20,8 @@ from brax.envs.base import State, Wrapper
 import jax
 import jax.numpy as jnp
 
-jax.config.update("jax_enable_x64", True)
-dtype = jnp.float64
+# jax.config.update("jax_enable_x64", True)
+dtype = jnp.float32
 
 
 def cond(pred, true_fun: Callable, false_fun: Callable, *operands: Any):
