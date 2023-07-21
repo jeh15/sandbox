@@ -39,7 +39,7 @@ class unitree_a1(PipelineEnv):
                 0, 0, self.nominal_body_height, 1, 0, 0, 0, 0, 0.9, -1.8,
                 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8
             ],
-            dtype=jnp.float32,
+            dtype=dtype,
         )
         self.desired_pos = jnp.array(
             [self.target_x, self.target_y, self.nominal_body_height],
@@ -87,7 +87,7 @@ class unitree_a1(PipelineEnv):
         obs = self._get_states(pipeline_state)
         # Reward Function:
         reward = self.reward_function(pipeline_state.q[self.body_id])
-        done = jnp.array(0, dtype=jnp.float64)
+        done = jnp.array(0, dtype=dtype)
         return State(pipeline_state, obs, reward, done, {})
 
     def step(self, state: State, action: jax.typing.ArrayLike) -> State:
