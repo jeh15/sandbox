@@ -27,8 +27,25 @@ def main(argv=None):
     # Load mjcf model:
     pipeline_model = mjcf.load(filepath)
     motor_mask = pipeline_model.actuator.qd_id
-    
+
     # Set initial state:
+    # initial_q = jnp.array(
+    #     [0, 0, 0.27, 1, 0, 0, 0, 0, 0.9, -1.8,
+    #      0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
+    #     dtype=jnp.float32,
+    # )
+    """
+    1: x of body
+    2: y of body
+    3: z of body
+    4: some rotation
+    5: some rotation
+    6: some rotation
+    7 - 9: front right leg
+    10 - 12: front left leg
+    13 - 15: back right leg
+    16 - 18: back left leg
+    """
     initial_q = jnp.array(
         [0, 0, 0.27, 1, 0, 0, 0, 0, 0.9, -1.8,
          0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
@@ -49,24 +66,33 @@ def main(argv=None):
     state_history = [state]
     bias_force_history = []
     actuator_force_history = []
-    simulation_steps = 1000
+    simulation_steps = 300
     for i in tqdm(range(simulation_steps)):
         bias_force = jax.jit(brax.generalized.dynamics.inverse)(
             sys=pipeline_model,
             state=state,
-        )
+        )[motor_mask]
+        front_left = jnp.array([0, jnp.sin(i / 50), 0])
+        front_right = -jnp.array([0, jnp.sin(i / 50), 0])
+        back_left = -jnp.array([0, jnp.sin(i / 50), 0])
+        back_right = jnp.array([0, jnp.sin(i / 50), 0])
+        sine_force = 5 * jnp.concatenate([front_right, front_left, back_right, back_left])
         passive_force = jax.jit(brax.generalized.dynamics._passive)(
             sys=pipeline_model,
             state=state,
-        )
-        ctrl_input = 2 * bias_force[motor_mask] - passive_force[motor_mask]
+        )[motor_mask]
+        custom_bias_force = utilities.calculate_coriolis_matrix(
+            sys=pipeline_model,
+            state=state,
+        )[motor_mask]
+        ctrl_input = sine_force
         actuator_force = brax.actuator.to_tau(
             pipeline_model,
             ctrl_input,
             state.q,
             state.qd,
         )
-        state = step_fn(pipeline_model, state, -ctrl_input)
+        state = step_fn(pipeline_model, state, jnp.zeros_like(ctrl_input))
         state_history.append(state)
         bias_force_history.append(bias_force)
         actuator_force_history.append(actuator_force)
@@ -89,7 +115,7 @@ def main(argv=None):
     maximum_bias_forces = jnp.array(maximum_bias_forces)
     minimum_actuator_forces = jnp.array(minimum_actuator_forces)
     maximum_actuator_forces = jnp.array(maximum_actuator_forces)
-    
+
     video_filepath = os.path.join(os.path.dirname(__file__), "unitree_simulation")
     visualize.create_video(
         sys=pipeline_model,
@@ -103,4 +129,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     app.run(main)
-

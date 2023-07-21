@@ -44,7 +44,7 @@ def calculate_coriolis_matrix(
 
         return cdd
 
-    zero_motion_vector = brax.Motion.create(
+    zero_motion_cdofd = brax.Motion.create(
         ang=jnp.zeros_like(state.cdofd.ang),
         vel=jnp.zeros_like(state.cdofd.vel),
     )
@@ -56,7 +56,7 @@ def calculate_coriolis_matrix(
         sys,
         cdd_fn,
         "ddd",
-        zero_motion_vector,
+        zero_motion_cdofd,
         zero_joint_velocity,
         sys.dof_link(depth=True),
     )
@@ -67,7 +67,11 @@ def calculate_coriolis_matrix(
 
     # To make cd zero do same thing as zero_motion_vector
     # cfrc_flat = jax.vmap(frc)(state.cinr, cdd, state.cd)
-    cfrc_flat = jax.vmap(frc)(state.cinr, cdd, zero_motion_vector)
+    zero_motion_cd = brax.Motion.create(
+        ang=jnp.zeros_like(state.cd.ang),
+        vel=jnp.zeros_like(state.cd.vel),
+    )
+    cfrc_flat = jax.vmap(frc)(state.cinr, cdd, zero_motion_cd)
 
     # backward scan up tree: accumulate link center of mass forces
     def cfrc_fn(cfrc_child, cfrc):
