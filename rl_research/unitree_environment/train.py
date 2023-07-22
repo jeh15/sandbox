@@ -20,6 +20,10 @@ import custom_wrapper
 import visualize
 import save_checkpoint
 
+# Debug OOM Errors:
+# os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
+os.environ['XLA_FLAGS=--xla_dump_to']='/tmp/foo'
+
 # jax.config.update("jax_enable_x64", True)
 dtype = jnp.float32
 
@@ -88,8 +92,8 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 200
-    num_envs = 32
+    episode_length = 20
+    num_envs = 2
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,

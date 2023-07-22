@@ -141,17 +141,6 @@ class ActorCriticNetwork(nn.Module):
         self.step_pipeline = jax.jit(step_pipeline)
 
     def model(self, x, key):
-        # Limit Output Range:
-        high_limit = 150.0 / 2.0
-        low_limit = 28.0 / 2.0
-        range_limit = jnp.array(
-            [
-                high_limit, high_limit, high_limit,
-                low_limit, low_limit, low_limit,
-            ],
-            dtype=dtype,
-        )
-
         # Create Initial Pipeline State:
         q = x[:6]
         qd = x[6:]

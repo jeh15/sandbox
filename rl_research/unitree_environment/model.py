@@ -194,11 +194,6 @@ class ActorCriticNetwork(nn.Module):
         )
 
     def model(self, x, key):
-        """
-            What I changed...
-            state_trajectory now includes the initial condition.
-            Added a shared layer before the mean, std, and value layers.
-        """
         # Run MPC Block:
         state_trajectory = self.MPCCell(x, key)
 

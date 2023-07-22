@@ -1,0 +1,92 @@
+<mujoco model="ur5e">
+  <compiler angle="radian" meshdir="meshes/ur5e/collision/" autolimits="true" inertiafromgeom="false"/>
+
+  <statistic meansize="0.165557" extent="1.04635" center="0.386531 0.0886669 0.162489"/>
+
+	<option gravity="0 0 -9.81"/>
+
+  <!-- ur5e properties -->
+  <default>
+    <default class="ur5e">
+      <joint axis="0 1 0" range="-6.28319 6.28319" armature="0.1"/>
+      <general gaintype="fixed" biastype="affine" ctrlrange="-6.2831 6.2831" gainprm="2000" biasprm="0 -2000 -400" forcerange="-150 150"/>
+      <default class="size3">
+        <default class="size3_limited">
+          <joint range="-3.1415 3.1415"/>
+          <general ctrlrange="-3.1415 3.1415"/>
+        </default>
+      </default>
+      <default class="size1">
+        <general gainprm="500" biasprm="0 -500 -100" forcerange="-28 28"/>
+      </default>
+    </default>
+  </default>
+
+  <size nstack="3000"/>
+
+  <custom>
+    <!-- brax custom params -->
+    <numeric data="10000" name="constraint_stiffness"/>
+    <numeric data="10000" name="constraint_limit_stiffness"/>
+    <numeric data="10" name="constraint_ang_damping"/>
+    <numeric data="50" name="constraint_vel_damping"/>
+    <numeric data="0" name="ang_damping"/>
+    <numeric data="0" name="spring_mass_scale"/>
+		<numeric data="1" name="spring_inertia_scale"/>
+		<numeric data="10" name="solver_maxls"/>
+  </custom>
+
+  <asset>
+    <mesh name="base" file="base.obj"/>
+    <mesh name="shoulder" file="shoulder.obj"/>
+    <mesh name="upperarm" file="upperarm.obj"/>
+    <mesh name="forearm" file="forearm.obj"/>
+    <mesh name="wrist1" file="wrist1.obj"/>
+    <mesh name="wrist2" file="wrist2.obj"/>
+    <mesh name="wrist3" file="wrist3.obj"/>
+  </asset>
+
+  <worldbody>
+    <geom quat="-1 0 0 0" type="mesh" mesh="base" contype="0" conaffinity="0" group="2"/>
+    <body name="shoulder_link" pos="0 0 0.1625" quat="0 0 0 1">
+      <inertial pos="0 0 0" mass="3.7" diaginertia="0.0102675 0.0102675 0.00666"/>
+      <joint name="shoulder_pan_joint" pos="0 0 0" axis="0 0 1" range="-6.28319 6.28319"/>
+      <geom quat="0 0 0 1" type="mesh" mesh="shoulder" contype="0" conaffinity="0" group="2"/>
+      <body name="upper_arm_link" quat="0.707107 0.707107 0 0">
+        <inertial pos="-0.2125 0 0.138" quat="0.707107 0 0.707107 0" mass="8.393" diaginertia="0.133886 0.133886 0.0151074"/>
+        <joint name="shoulder_lift_joint" pos="0 0 0" axis="0 0 1" range="-6.28319 6.28319"/>
+        <geom pos="0 0 0.138" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="upperarm" contype="0" conaffinity="0" group="2"/>
+        <body name="forearm_link" pos="-0.425 0 0">
+          <inertial pos="-0.1961 0 0.007" quat="0.707107 0 0.707107 0" mass="2.275" diaginertia="0.0312094 0.0312094 0.004095"/>
+          <joint name="elbow_joint" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
+          <geom pos="0 0 0.007" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="forearm" contype="0" conaffinity="0" group="2"/>
+          <body name="wrist_1_link" pos="-0.3922 0 0.1333">
+            <inertial pos="0 0 0" mass="1.219" diaginertia="0.0025599 0.0025599 0.0021942"/>
+            <joint name="wrist_1_joint" pos="0 0 0" axis="0 0 1" range="-6.28319 6.28319"/>
+            <geom pos="0 0 -0.127" quat="0.707107 0.707107 0 0" type="mesh" mesh="wrist1" contype="0" conaffinity="0" group="2"/>
+            <body name="wrist_2_link" pos="0 -0.0997 -2.04488e-11" quat="0.707107 0.707107 0 0">
+              <inertial pos="0 0 0" mass="1.219" diaginertia="0.0025599 0.0025599 0.0021942"/>
+              <joint name="wrist_2_joint" pos="0 0 0" axis="0 0 1" range="-6.28319 6.28319"/>
+              <geom pos="0 0 -0.0997" type="mesh" mesh="wrist2" contype="0" conaffinity="0" group="2"/>
+              <body name="wrist_3_link" pos="0 0.0996 -2.04283e-11" quat="0.707107 -0.707107 0 0">
+                <inertial pos="0 0 -0.0229" quat="0.5 0.5 -0.5 0.5" mass="0.1879" diaginertia="0.000132117 9.89041e-05 9.89041e-05"/>
+                <joint name="wrist_3_joint" pos="0 0 0" axis="0 0 1" range="-6.28319 6.28319"/>
+                <geom pos="0 0 -0.0989" quat="0.707107 0.707107 0 0" type="mesh" mesh="wrist3" contype="0" conaffinity="0" group="2"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <general class="size3" name="shoulder_pan" joint="shoulder_pan_joint"/>
+    <general class="size3" name="shoulder_lift" joint="shoulder_lift_joint"/>
+    <general class="size3_limited" name="elbow" joint="elbow_joint"/>
+    <general class="size1" name="wrist_1" joint="wrist_1_joint"/>
+    <general class="size1" name="wrist_2" joint="wrist_2_joint"/>
+    <general class="size1" name="wrist_3" joint="wrist_3_joint"/>
+  </actuator>
+
+</mujoco>

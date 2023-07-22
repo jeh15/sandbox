@@ -89,12 +89,34 @@ def loss_function(
     entropy_coeff = 0.01
     clip_coeff = 0.2
 
-    values, log_probability, entropy = replay(
+    # Vmapped Replay:
+    # values, log_probability, entropy = replay(
+    #     model_params,
+    #     apply_fn,
+    #     model_input,
+    #     actions,
+    #     keys,
+    # )
+
+    # Serialized Replay:
+    model_input = jnp.swapaxes(
+        jnp.asarray(model_input), axis1=1, axis2=0,
+    )
+    actions = jnp.swapaxes(
+        jnp.asarray(actions), axis1=1, axis2=0,
+    )
+    keys = jnp.swapaxes(
+        jnp.asarray(keys), axis1=1, axis2=0,
+    )
+    length = model_input.shape[0]
+
+    values, log_probability, entropy = replay_serial(
         model_params,
         apply_fn,
         model_input,
         actions,
         keys,
+        length,
     )
 
     # Calculate Ratio: (Should this be No Grad?)
@@ -123,6 +145,7 @@ def loss_function(
     return ppo_loss + value_loss + entropy_loss
 
 
+# Vmapped Replay Function:
 @functools.partial(jax.jit, static_argnames=["apply_fn"])
 @functools.partial(jax.vmap, in_axes=(None, None, 1, 1, 1), out_axes=(1, 1, 1))
 def replay(
@@ -141,6 +164,56 @@ def replay(
     )
     log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
     return jnp.squeeze(values), jnp.squeeze(log_probability), jnp.squeeze(entropy)
+
+
+# Serialized Replay Function:
+@functools.partial(jax.jit, static_argnames=["apply_fn", "length"])
+def replay_serial(
+    model_params: flax.core.FrozenDict,
+    apply_fn: Callable[..., Any],
+    model_input: jax.Array,
+    actions: jax.Array,
+    keys: jax.random.PRNGKeyArray,
+    length: int,
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    def forward_pass_rollout(
+            carry: None,
+            xs: Tuple[jax.Array, jax.Array, jax.random.PRNGKeyArray],
+    ) -> Tuple[None, Tuple[jax.Array, jax.Array, jax.random.PRNGKeyArray]]:
+        model_input, actions, key = xs
+        mean, std, values = forward_pass(
+            model_params,
+            apply_fn,
+            model_input,
+            key,
+        )
+        log_probability, entropy = jax.vmap(evaluate_action)(
+            mean,
+            std,
+            actions,
+        )
+        carry = None
+        data = (jnp.squeeze(values), log_probability, entropy)
+        return carry, data
+
+    # Scan over replay:
+    _, data = jax.lax.scan(
+        forward_pass_rollout,
+        None,
+        (model_input, actions, keys),
+        length,
+    )
+    values, log_probability, entropy = data
+    values = jnp.swapaxes(
+        jnp.asarray(values), axis1=1, axis2=0,
+    )
+    log_probability = jnp.swapaxes(
+        jnp.asarray(log_probability), axis1=1, axis2=0,
+    )
+    entropy = jnp.swapaxes(
+        jnp.asarray(entropy), axis1=1, axis2=0,
+    )
+    return values, log_probability, entropy
 
 
 @functools.partial(
