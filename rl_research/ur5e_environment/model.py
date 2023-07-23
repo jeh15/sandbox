@@ -73,9 +73,13 @@ class _MPCCell(nn.Module):
         x_std = nn.sigmoid(x_std)
         x_std = self.policy_std_2(x_std)
         x_std = nn.sigmoid(x_std)
-        probability_distribution = distrax.MultivariateNormalDiag(
+        # probability_distribution = distrax.MultivariateNormalDiag(
+        #     loc=x_mu,
+        #     scale_diag=x_std,
+        # )
+        probability_distribution = distrax.Normal(
             loc=x_mu,
-            scale_diag=x_std,
+            scale=x_std,
         )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
@@ -131,8 +135,8 @@ class ActorCriticNetwork(nn.Module):
     sys: System
 
     def setup(self):
-        features = 128
-        MPC_features = 128
+        features = 256
+        MPC_features = 256
         self.shared_layer_1 = nn.Dense(
             features=features,
             name='shared_layer_1',

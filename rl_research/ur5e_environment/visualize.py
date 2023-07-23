@@ -20,26 +20,43 @@ def create_video(
         height: int,
         name: str,
         filepath: str,
+        source: str = "pipeline",
 ):
     fig, ax = plt.subplots()
     ax.set_title(f"{name}:")
     ax.get_yaxis().set_visible(False)
     ax.get_xaxis().set_visible(False)
     # Create image handle:
-    h = ax.imshow(
-        np.zeros_like(
-            brax.io.image.render_array(sys, states[0], width, height)
+    if source == "pipeline":
+        h = ax.imshow(
+            np.zeros_like(
+                brax.io.image.render_array(sys, states[0], width, height)
+            )
         )
-    )
+    elif source == "environment":
+        h = ax.imshow(
+            np.zeros_like(
+                brax.io.image.render_array(sys, states[0].pipeline_state, width, height)
+            )
+        )
 
     # Create camera:
-    camera = brax.io.image.get_camera(
-        sys=sys,
-        state=states[0],
-        width=width,
-        height=height,
-        ssaa=2,
-    )
+    if source == "pipeline":
+        camera = brax.io.image.get_camera(
+            sys=sys,
+            state=states[0],
+            width=width,
+            height=height,
+            ssaa=2,
+        )
+    elif source == "environment":
+        camera = brax.io.image.get_camera(
+            sys=sys,
+            state=states[0].pipeline_state,
+            width=width,
+            height=height,
+            ssaa=2,
+        )
 
     # Create video writer:
     fps = 24
@@ -49,13 +66,17 @@ def create_video(
     video_length = len(states)
     with writer_obj.saving(fig, filepath + ".mp4", 300):
         for simulation_step in tqdm(range(0, video_length, rate)):
+            if source == "pipeline":
+                state = states[simulation_step]
+            elif source == "environment":
+                state = states[simulation_step].pipeline_state
+
             img_array = image.render_array(
                 sys=sys,
-                state=states[simulation_step],
+                state=state,
                 width=width,
                 height=height,
                 camera=camera,
             )
             h.set_data(img_array)
             writer_obj.grab_frame()
-

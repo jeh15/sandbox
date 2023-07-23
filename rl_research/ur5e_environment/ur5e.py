@@ -36,7 +36,9 @@ class ur5e(PipelineEnv):
         self.motor_id = sys.actuator.qd_id
 
         self.desired_pos = jnp.array([0.3, 0.3, 0.5], dtype=dtype)
-        self.reward_function = lambda x: -jnp.linalg.norm(self.desired_pos - x)
+        self.position_weight = 1.0 * sys.dt
+        self.velocity_weight = 0.1 * sys.dt
+        self.reward_function = lambda x, v: - self.position_weight * jnp.linalg.norm(self.desired_pos - x) - self.velocity_weight * jnp.linalg.norm(v)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 
@@ -60,7 +62,7 @@ class ur5e(PipelineEnv):
         joint_frame = self.get_q(pipeline_state)
         end_effector = self.get_tool_position(pipeline_state)
         # Reward Function:
-        reward = self.reward_function(end_effector)
+        reward = self.reward_function(end_effector, pipeline_state.qd)
         done = jnp.array(0, dtype=dtype)
         return State(pipeline_state, joint_frame, reward, done, {})
 
@@ -71,7 +73,7 @@ class ur5e(PipelineEnv):
         end_effector = self.get_tool_position(pipeline_state)
         done = jnp.array(0, dtype=dtype)
         # Reward Function:
-        reward = self.reward_function(end_effector)
+        reward = self.reward_function(end_effector, pipeline_state.qd)
         # TODO: Create failure condition:
         # reward = jnp.where(done == 1.0, -100.0, reward)
         return state.replace(

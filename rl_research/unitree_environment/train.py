@@ -22,7 +22,7 @@ import save_checkpoint
 
 # Debug OOM Errors:
 # os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
-os.environ['XLA_FLAGS=--xla_dump_to']='/tmp/foo'
+# os.environ['XLA_FLAGS=--xla_dump_to']='/tmp/foo'
 
 # jax.config.update("jax_enable_x64", True)
 dtype = jnp.float32
@@ -92,12 +92,13 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 20
-    num_envs = 2
+    episode_length = 200
+    episode_train_length = 25
+    num_envs = 32
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
-        auto_reset=False,
+        auto_reset=True,
         batch_size=num_envs,
         backend='generalized'
     )
@@ -121,7 +122,7 @@ def main(argv=None):
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
-        nodes=5,
+        nodes=3,
         sys=pipeline_model,
     )
 
@@ -154,7 +155,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
-    training_length = 300
+    training_length = 500
     key, env_key = jax.random.split(initial_key)
     visualize_flag = False
     checkpoint_enabled = False
@@ -165,164 +166,167 @@ def main(argv=None):
     time_history = []
     epoch_time = []
     start_time = time.time()
-    for iteration in range(training_length):
-        states = reset_fn(env_key)
-        state_history = []
-        state_history.append(states)
-        model_input_episode = []
-        states_episode = []
-        values_episode = []
-        log_probability_episode = []
-        actions_episode = []
-        rewards_episode = []
-        masks_episode = []
-        keys_episode = []
-        iteration_start_time = time.time()
+    for epoch in range(training_length):
         # Episode Loop:
-        for environment_step in range(episode_length):
-            key, env_key = jax.random.split(env_key)
-            model_key = jax.random.split(env_key, num_envs)
-            model_input = states.obs
-            mean, std, values = model_utilities.forward_pass(
-                model_params=model_state.params,
-                apply_fn=model_state.apply_fn,
-                x=model_input,
-                key=model_key,
-            )
-            actions, log_probability, entropy = model_utilities.select_action(
-                mean=mean,
-                std=std,
-                key=env_key,
-            )
-            next_states = step_fn(
-                states,
-                actions,
-            )
-            states_episode.append(states.obs)
-            values_episode.append(jnp.squeeze(values))
-            log_probability_episode.append(jnp.squeeze(log_probability))
-            actions_episode.append(jnp.squeeze(actions))
-            rewards_episode.append(jnp.squeeze(states.reward))
-            masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
-            model_input_episode.append(model_input)
-            keys_episode.append(model_key)
-            states = next_states
+        for episode_step in range(episode_length // episode_train_length):
+            states = reset_fn(env_key)
+            state_history = []
             state_history.append(states)
+            model_input_episode = []
+            states_episode = []
+            values_episode = []
+            log_probability_episode = []
+            actions_episode = []
+            rewards_episode = []
+            masks_episode = []
+            keys_episode = []
+            iteration_start_time = time.time()
+            # Learning sample loop:
+            for episode_train_step in range(episode_train_length):
+                key, env_key = jax.random.split(env_key)
+                model_key = jax.random.split(env_key, num_envs)
+                model_input = states.obs
+                mean, std, values = model_utilities.forward_pass(
+                    model_params=model_state.params,
+                    apply_fn=model_state.apply_fn,
+                    x=model_input,
+                    key=model_key,
+                )
+                actions, log_probability, entropy = model_utilities.select_action(
+                    mean=mean,
+                    std=std,
+                    key=env_key,
+                )
+                next_states = step_fn(
+                    states,
+                    actions,
+                    env_key,
+                )
+                states_episode.append(states.obs)
+                values_episode.append(jnp.squeeze(values))
+                log_probability_episode.append(jnp.squeeze(log_probability))
+                actions_episode.append(jnp.squeeze(actions))
+                rewards_episode.append(jnp.squeeze(states.reward))
+                masks_episode.append(jnp.where(states.done == 0, 1.0, 0.0))
+                model_input_episode.append(model_input)
+                keys_episode.append(model_key)
+                states = next_states
+                state_history.append(states)
 
-        # Convert to Jax Arrays:
-        states_episode = jnp.swapaxes(
-            jnp.asarray(states_episode), axis1=1, axis2=0,
-        )
-        values_episode = jnp.swapaxes(
-            jnp.asarray(values_episode), axis1=1, axis2=0,
-        )
-        log_probability_episode = jnp.swapaxes(
-            jnp.asarray(log_probability_episode), axis1=1, axis2=0,
-        )
-        actions_episode = jnp.swapaxes(
-            jnp.asarray(actions_episode), axis1=1, axis2=0,
-        )
-        rewards_episode = jnp.swapaxes(
-            jnp.asarray(rewards_episode), axis1=1, axis2=0,
-        )
-        masks_episode = jnp.swapaxes(
-            jnp.asarray(masks_episode), axis1=1, axis2=0,
-        )
-        model_input_episode = jnp.swapaxes(
-            jnp.asarray(model_input_episode), axis1=1, axis2=0,
-        )
-        keys_episode = jnp.swapaxes(
-            jnp.asarray(keys_episode), axis1=1, axis2=0,
-        )
-
-        # No Gradient Calculation:
-        model_input = states.obs
-        model_key = jax.random.split(env_key, num_envs)
-        _, _, values = jax.lax.stop_gradient(
-            model_utilities.forward_pass(
-                model_params=model_state.params,
-                apply_fn=model_state.apply_fn,
-                x=model_input,
-                key=model_key,
-            ),
-        )
-
-        # Calculate Advantage:
-        values_episode = jnp.concatenate(
-            [values_episode, values],
-            axis=1,
-        )
-
-        advantage_episode, returns_episode = jax.lax.stop_gradient(
-            model_utilities.calculate_advantage(
-                rewards_episode,
-                values_episode,
-                masks_episode,
-                episode_length,
+            # Convert to Jax Arrays:
+            states_episode = jnp.swapaxes(
+                jnp.asarray(states_episode), axis1=1, axis2=0,
             )
-        )
+            values_episode = jnp.swapaxes(
+                jnp.asarray(values_episode), axis1=1, axis2=0,
+            )
+            log_probability_episode = jnp.swapaxes(
+                jnp.asarray(log_probability_episode), axis1=1, axis2=0,
+            )
+            actions_episode = jnp.swapaxes(
+                jnp.asarray(actions_episode), axis1=1, axis2=0,
+            )
+            rewards_episode = jnp.swapaxes(
+                jnp.asarray(rewards_episode), axis1=1, axis2=0,
+            )
+            masks_episode = jnp.swapaxes(
+                jnp.asarray(masks_episode), axis1=1, axis2=0,
+            )
+            model_input_episode = jnp.swapaxes(
+                jnp.asarray(model_input_episode), axis1=1, axis2=0,
+            )
+            keys_episode = jnp.swapaxes(
+                jnp.asarray(keys_episode), axis1=1, axis2=0,
+            )
 
-        # Update Function:
-        model_state, loss = model_utilities.train_step(
-            model_state=model_state,
-            model_input=model_input_episode,
-            actions=actions_episode,
-            advantages=advantage_episode,
-            returns=returns_episode,
-            previous_log_probability=log_probability_episode,
-            keys=keys_episode,
-            batch_size=num_envs,
-            episode_length=episode_length,
-            ppo_steps=ppo_steps,
-        )
+            # No Gradient Calculation:
+            model_input = states.obs
+            model_key = jax.random.split(env_key, num_envs)
+            _, _, values = jax.lax.stop_gradient(
+                model_utilities.forward_pass(
+                    model_params=model_state.params,
+                    apply_fn=model_state.apply_fn,
+                    x=model_input,
+                    key=model_key,
+                ),
+            )
 
-        average_reward = np.mean(
-            np.sum(
-                (rewards_episode),
+            # Calculate Advantage:
+            values_episode = jnp.concatenate(
+                [values_episode, values],
                 axis=1,
-            ),
-        )
+            )
 
-        average_value = np.mean(
-            np.mean(
-                (values_episode),
-                axis=1,
-            ),
-            axis=0
-        )
-
-        if average_reward >= best_reward:
-            best_reward = average_reward
-            best_iteration = iteration
-
-        if visualize_flag:
-            if iteration % 25 == 0:
-                video_filepath = os.path.join(
-                    os.path.dirname(__file__),
-                    f"unitree_training_iteration_{iteration}",
+            advantage_episode, returns_episode = jax.lax.stop_gradient(
+                model_utilities.calculate_advantage(
+                    rewards_episode,
+                    values_episode,
+                    masks_episode,
+                    episode_train_length,
                 )
-                visualize.create_video(
-                    sys=pipeline_model,
-                    states=state_history,
-                    width=1280,
-                    height=720,
-                    name="Unitree a1",
-                    filepath=video_filepath,
-                )
+            )
 
-        current_learning_rate = model_state.opt_state.hyperparams['learning_rate']
-        print(f'Epoch: {iteration} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Learning Rate: {current_learning_rate}')
+            # Update Function:
+            model_state, loss = model_utilities.train_step(
+                model_state=model_state,
+                model_input=model_input_episode,
+                actions=actions_episode,
+                advantages=advantage_episode,
+                returns=returns_episode,
+                previous_log_probability=log_probability_episode,
+                keys=keys_episode,
+                batch_size=num_envs,
+                episode_length=episode_train_length,
+                ppo_steps=ppo_steps,
+            )
 
-        # Save Metrics:
-        iteration_time = time.time() - iteration_start_time
-        elapsed_time = time.time() - start_time
-        reward_history.append(rewards_episode)
-        loss_history.append(loss)
-        time_history.append(elapsed_time)
-        epoch_time.append(iteration_time)
+            average_reward = np.mean(
+                np.sum(
+                    (rewards_episode),
+                    axis=1,
+                ),
+            )
+
+            average_value = np.mean(
+                np.mean(
+                    (values_episode),
+                    axis=1,
+                ),
+                axis=0
+            )
+
+            if average_reward >= best_reward:
+                best_reward = average_reward
+                best_iteration = epoch
+
+            if visualize_flag:
+                if epoch % 25 == 0:
+                    video_filepath = os.path.join(
+                        os.path.dirname(__file__),
+                        f"unitree_training_iteration_{epoch}",
+                    )
+                    visualize.create_video(
+                        sys=pipeline_model,
+                        states=state_history,
+                        width=1280,
+                        height=720,
+                        name="Unitree a1",
+                        filepath=video_filepath,
+                    )
+
+            current_learning_rate = model_state.opt_state.hyperparams['learning_rate']
+            print(f'Epoch: {epoch} \t Average Reward: {average_reward} \t Loss: {loss} \t Average Value: {average_value} \t Learning Rate: {current_learning_rate}')
+
+            # Save Metrics:
+            iteration_time = time.time() - iteration_start_time
+            elapsed_time = time.time() - start_time
+            reward_history.append(rewards_episode)
+            loss_history.append(loss)
+            time_history.append(elapsed_time)
+            epoch_time.append(iteration_time)
 
 
-    print(f'The best reward of {best_reward} was achieved at iteration {best_iteration}')
+    print(f'The best reward of {best_reward} was achieved at epoch {best_iteration}')
 
     directory = os.path.dirname(__file__)
     if checkpoint_enabled:

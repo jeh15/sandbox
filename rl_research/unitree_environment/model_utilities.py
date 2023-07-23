@@ -21,34 +21,53 @@ def forward_pass(
     return mean, std, values
 
 
-@jax.jit
+@functools.partial(jax.jit, static_argnames=["multivariate"])
 def select_action(
     mean: jax.Array,
     std: jax.Array,
     key: jax.random.PRNGKeyArray,
+    multivariate: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    probability_distribution = distrax.MultivariateNormalDiag(
-        loc=mean,
-        scale_diag=std,
-    )
-    actions = probability_distribution.sample(seed=key)
-    log_probability = probability_distribution.log_prob(actions)
-    entropy = probability_distribution.entropy()
+    if multivariate:
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=mean,
+            scale_diag=std,
+        )
+        actions = probability_distribution.sample(seed=key)
+        log_probability = probability_distribution.log_prob(actions)
+        entropy = probability_distribution.entropy()
+    else:
+        probability_distribution = distrax.Normal(
+            loc=mean,
+            scale=std,
+        )
+        actions = probability_distribution.sample(seed=key)
+        log_probability = jnp.sum(probability_distribution.log_prob(actions), axis=-1)
+        entropy = jnp.sum(probability_distribution.entropy(), axis=-1)
     return actions, log_probability, entropy
 
 
-@jax.jit
+@functools.partial(jax.jit, static_argnames=["multivariate"])
 def evaluate_action(
     mean: jax.Array,
     std: jax.Array,
     action: jax.Array,
+    multivariate: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    probability_distribution = distrax.MultivariateNormalDiag(
-        loc=mean,
-        scale_diag=std,
-    )
-    log_probability = probability_distribution.log_prob(action)
-    entropy = probability_distribution.entropy()
+    if multivariate:
+        probability_distribution = distrax.MultivariateNormalDiag(
+            loc=mean,
+            scale_diag=std,
+        )
+        log_probability = probability_distribution.log_prob(action)
+        entropy = probability_distribution.entropy()
+    else:
+        probability_distribution = distrax.Normal(
+            loc=mean,
+            scale=std,
+        )
+        log_probability = jnp.sum(probability_distribution.log_prob(action), axis=-1)
+        entropy = jnp.sum(probability_distribution.entropy(), axis=-1)
     return log_probability, entropy
 
 
@@ -155,14 +174,13 @@ def replay(
     actions: jax.typing.ArrayLike,
     keys: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    print("Compiling Replay Function...")
     mean, std, values = forward_pass(
         model_params,
         apply_fn,
         model_input,
         keys,
     )
-    log_probability, entropy = jax.vmap(evaluate_action)(mean, std, actions)
+    log_probability, entropy = evaluate_action(mean, std, actions)
     return jnp.squeeze(values), jnp.squeeze(log_probability), jnp.squeeze(entropy)
 
 
@@ -187,7 +205,7 @@ def replay_serial(
             model_input,
             key,
         )
-        log_probability, entropy = jax.vmap(evaluate_action)(
+        log_probability, entropy = evaluate_action(
             mean,
             std,
             actions,

@@ -57,7 +57,8 @@ class unitree_a1(PipelineEnv):
         self.motor_id = sys.actuator.qd_id
 
         # Distance to desired position: (Standing position)
-        self.reward_function = lambda x: -jnp.linalg.norm(self.desired_pos - x)
+        self.position_weight = 1.0 * sys.dt
+        self.reward_function = lambda x: -self.position_weight * jnp.linalg.norm(self.desired_pos - x)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 

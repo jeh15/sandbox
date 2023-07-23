@@ -62,19 +62,23 @@ class _MPCCell(nn.Module):
     ) -> Tuple[Tuple[jnp.ndarray, base.State, PRNGKey], jnp.ndarray]:
         x, state, key = carry
         x = self.shared_layer_1(x)
-        x = nn.relu(x)
+        x = nn.tanh(x)
         x = self.shared_layer_2(x)
-        x = nn.relu(x)
+        x = nn.tanh(x)
         x_mu = self.policy_mean_1(x)
-        x_mu = nn.relu(x_mu)
+        x_mu = nn.tanh(x_mu)
         x_mu = self.policy_mean_2(x_mu)
         x_std = self.policy_std_1(x)
-        x_std = nn.relu(x_std)
+        x_std = nn.sigmoid(x_std)
         x_std = self.policy_std_2(x_std)
-        x_std = nn.relu(x_std)
-        probability_distribution = distrax.MultivariateNormalDiag(
+        x_std = nn.sigmoid(x_std)
+        # probability_distribution = distrax.MultivariateNormalDiag(
+        #     loc=x_mu,
+        #     scale_diag=x_std,
+        # )
+        probability_distribution = distrax.Normal(
             loc=x_mu,
-            scale_diag=x_std,
+            scale=x_std,
         )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
@@ -118,9 +122,10 @@ class MPCCell(nn.Module):
 
         # Concatenate State Trajectory:
         predicted_state_trajectory = jnp.concatenate(data)
-        state_trajectory = jnp.concatenate(
-            [initial_condition, predicted_state_trajectory],
-        )
+        # state_trajectory = jnp.concatenate(
+        #     [initial_condition, predicted_state_trajectory],
+        # )
+        state_trajectory = predicted_state_trajectory
         return state_trajectory
 
 
@@ -130,8 +135,8 @@ class ActorCriticNetwork(nn.Module):
     sys: System
 
     def setup(self):
-        features = 64
-        MPC_features = 64
+        features = 256
+        MPC_features = 256
         self.shared_layer_1 = nn.Dense(
             features=features,
             name='shared_layer_1',
@@ -199,30 +204,30 @@ class ActorCriticNetwork(nn.Module):
 
         # Shared Layer:
         x = self.shared_layer_1(state_trajectory)
-        x = nn.relu(x)
+        x = nn.tanh(x)
         x = self.shared_layer_2(x)
-        x = nn.relu(x)
+        x = nn.tanh(x)
 
         # Mean Layer:
         i = self.dense_1(x)
-        i = nn.relu(i)
+        i = nn.tanh(i)
         i = self.dense_2(i)
-        i = nn.relu(i)
+        i = nn.tanh(i)
         # Standard Deviation Layer:
         j = self.dense_3(x)
-        j = nn.relu(j)
+        j = nn.tanh(j)
         j = self.dense_4(j)
-        j = nn.relu(j)
+        j = nn.tanh(j)
         # Value Layer:
         k = self.dense_5(x)
-        k = nn.relu(k)
+        k = nn.tanh(k)
         k = self.dense_6(k)
-        k = nn.relu(k)
+        k = nn.tanh(k)
 
         # Output Layer:
         mean = self.mean_layer(i)
         std = self.std_layer(j)
-        std = nn.relu(std)
+        std = nn.sigmoid(std)
         values = self.value_layer(k)
         return mean, std, values
 

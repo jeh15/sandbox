@@ -88,12 +88,12 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 200
+    episode_length = 100
     num_envs = 48
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
-        auto_reset=False,
+        auto_reset=True,
         batch_size=num_envs,
         backend='generalized'
     )
@@ -131,7 +131,7 @@ def main(argv=None):
     learning_rate = 1e-3
     end_learning_rate = 1e-6
     transition_steps = 100
-    transition_begin = 400
+    transition_begin = 200
     ppo_steps = 10
 
     # Create a train state:
@@ -150,7 +150,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
-    training_length = 500
+    training_length = 300
     key, env_key = jax.random.split(initial_key)
     visualize_flag = False
     checkpoint_enabled = True
@@ -193,6 +193,7 @@ def main(argv=None):
             next_states = step_fn(
                 states,
                 actions,
+                env_key,
             )
             states_episode.append(states.obs)
             values_episode.append(jnp.squeeze(values))
