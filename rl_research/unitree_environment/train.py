@@ -14,11 +14,13 @@ from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
 
 import model
-import model_utilities
+import model_utilities_v2 as model_utilities
 import unitree_a1
 import custom_wrapper
 import visualize
 import save_checkpoint
+
+import jax.profiler
 
 # Debug OOM Errors:
 # os.environ['XLA_PYTHON_CLIENT_ALLOCATOR']='platform'
@@ -213,6 +215,12 @@ def main(argv=None):
                 keys_episode.append(model_key)
                 states = next_states
                 state_history.append(states)
+
+                mean.block_until_ready()
+
+                jax.profiler.save_device_memory_profile("memory.prof")
+
+                exit()
 
             # Convert to Jax Arrays:
             states_episode = jnp.swapaxes(

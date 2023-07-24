@@ -36,6 +36,7 @@ class unitree_a1(PipelineEnv):
             )
         else:
             sys = sys.replace(dt=0.002)
+            sys = sys.replace(solver_iterations=10)
             n_frames = 1
 
         kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
