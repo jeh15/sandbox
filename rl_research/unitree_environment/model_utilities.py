@@ -92,7 +92,7 @@ def calculate_advantage(
     return advantage, returns
 
 
-@functools.partial(jax.jit, static_argnames=["apply_fn"])
+@functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
 def loss_function(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
@@ -102,6 +102,7 @@ def loss_function(
     returns: jax.typing.ArrayLike,
     previous_log_probability: jax.typing.ArrayLike,
     keys: jax.random.PRNGKeyArray,
+    episode_length: int,
 ) -> jnp.ndarray:
     # Algorithm Coefficients:
     value_coeff = 0.5
@@ -127,7 +128,6 @@ def loss_function(
     keys = jnp.swapaxes(
         jnp.asarray(keys), axis1=1, axis2=0,
     )
-    length = model_input.shape[0]
 
     values, log_probability, entropy = replay_serial(
         model_params,
@@ -135,7 +135,7 @@ def loss_function(
         model_input,
         actions,
         keys,
-        length,
+        episode_length,
     )
 
     # Calculate Ratio: (Should this be No Grad?)
@@ -185,14 +185,14 @@ def replay(
 
 
 # Serialized Replay Function:
-@functools.partial(jax.jit, static_argnames=["apply_fn", "length"])
+@functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
 def replay_serial(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
     model_input: jax.Array,
     actions: jax.Array,
     keys: jax.random.PRNGKeyArray,
-    length: int,
+    episode_length: int,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     def forward_pass_rollout(
             carry: None,
@@ -219,7 +219,7 @@ def replay_serial(
         forward_pass_rollout,
         None,
         (model_input, actions, keys),
-        length,
+        episode_length,
     )
     values, log_probability, entropy = data
     values = jnp.swapaxes(
@@ -251,7 +251,8 @@ def train_step(
 ) -> Tuple[flax.training.train_state.TrainState, jnp.ndarray]:
     # PPO Optimixation Loop:
     def ppo_loop(carry, xs):
-        model_state, keys = carry
+        # model_state, keys = carry
+        model_state = carry
         loss, gradients = gradient_function(
             model_state.params,
             model_state.apply_fn,
@@ -261,33 +262,44 @@ def train_step(
             returns,
             previous_log_probability,
             keys,
+            episode_length,
         )
         model_state = model_state.apply_gradients(grads=gradients)
         # Generate new RNG keys:
-        keys = jax.random.split(
-            keys[0, 0],
-            (batch_size * episode_length),
-        )
-        keys = jnp.reshape(
-            keys,
-            (batch_size, episode_length, keys.shape[-1]),
-        )
+        # keys = jax.random.split(
+        #     keys[0, 0],
+        #     (batch_size * episode_length),
+        # )
+        # keys = jnp.reshape(
+        #     keys,
+        #     (batch_size, episode_length, keys.shape[-1]),
+        # )
         # Pack carry and data:
-        carry = model_state, keys
+        # carry = model_state, keys
+        carry = model_state
         data = loss
         return carry, data
 
     gradient_function = jax.value_and_grad(loss_function)
 
+    # carry, data = jax.lax.scan(
+    #     f=ppo_loop,
+    #     init=(model_state, keys),
+    #     xs=None,
+    #     length=ppo_steps,
+    # )
+
     carry, data = jax.lax.scan(
         f=ppo_loop,
-        init=(model_state, keys),
+        init=(model_state),
         xs=None,
         length=ppo_steps,
     )
 
     # Unpack carry and data:
-    model_state, _ = carry
+    # model_state, _ = carry
+    model_state = carry
+
     loss = data
     loss = jnp.mean(loss)
 

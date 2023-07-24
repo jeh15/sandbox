@@ -25,7 +25,19 @@ class unitree_a1(PipelineEnv):
 
         sys = mjcf.load(filepath)
 
-        n_frames = 1
+        # Spring > Positional but these do not work:
+        if backend in ['spring', 'positional']:
+            sys = sys.replace(dt=0.0002)
+            n_frames = 10
+            sys = sys.replace(
+                actuator=sys.actuator.replace(
+                    gear=8.0 * jnp.ones_like(sys.actuator.gear),
+                ),
+            )
+        else:
+            sys = sys.replace(dt=0.002)
+            n_frames = 1
+
         kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
 
         # Class Wide Paraameters:
@@ -41,6 +53,7 @@ class unitree_a1(PipelineEnv):
             ],
             dtype=dtype,
         )
+
         self.desired_pos = jnp.array(
             [self.target_x, self.target_y, self.nominal_body_height],
             dtype=dtype,
@@ -65,25 +78,22 @@ class unitree_a1(PipelineEnv):
     def reset(self, rng: jax.random.PRNGKeyArray) -> State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
-        q_eps, qd_eps = 0.1, 0.01
-        q_range = jnp.zeros(
-            (self.sys.q_size(),),
-        ).at[self.motor_id].set(q_eps)
-        qd_range = jnp.zeros(
-            (self.sys.qd_size(),),
-        ).at[self.motor_id].set(qd_eps)
-        q = self.sys.init_q + jax.random.uniform(
-            rng1,
-            (self.sys.q_size(),),
-            minval=-q_range,
-            maxval=q_range,
-        )
-        qd = jax.random.uniform(
-            rng2,
-            (self.sys.qd_size(),),
-            minval=-qd_range,
-            maxval=qd_range,
-        )
+        # q_eps, qd_eps = 0.01, 0.01
+        # q_range = jnp.zeros(
+        #     (self.sys.q_size(),),
+        # ).at[self.motor_id].set(q_eps)
+        # qd_range = jnp.zeros(
+        #     (self.sys.qd_size(),),
+        # ).at[self.motor_id].set(qd_eps)
+        q = self.initial_q
+        # + jax.random.uniform(
+        #     rng1,
+        #     (self.sys.q_size(),),
+        #     minval=-q_range,
+        #     maxval=q_range,
+        # )
+        # qd = jnp.zeros((self.sys.qd_size(),), dtype=dtype)
+        qd = jnp.zeros((self.initial_q.shape[0] - 1,), dtype=jnp.float32)
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_states(pipeline_state)
         # Reward Function:
@@ -104,7 +114,7 @@ class unitree_a1(PipelineEnv):
         done = jnp.where(terminal_state.any(), 1.0, 0.0)
         # Reward Function:
         reward = self.reward_function(pipeline_state.q[self.body_id])
-        reward = jnp.where(done == 1.0, -100.0, reward)
+        reward = jnp.where(done == 1.0, -10.0, reward)
         return state.replace(
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done,
         )
@@ -119,3 +129,6 @@ class unitree_a1(PipelineEnv):
 
     def _get_states(self, pipeline_state: base.State) -> jnp.ndarray:
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd])
+
+    def _get_body_position(self, pipeline_state: base.State) -> jnp.ndarray:
+        return pipeline_state.x.pos[0]

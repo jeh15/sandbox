@@ -5,13 +5,14 @@ import jax.numpy as jnp
 from flax import linen as nn
 from brax import base
 from brax.base import System
-from brax.positional import pipeline
+from brax.generalized import pipeline
 import distrax
 
 PRNGKey = jax.random.PRNGKeyArray
 
 # jax.config.update("jax_enable_x64", True)
 dtype = jnp.float32
+range_scale = 2.0
 
 
 class _MPCCell(nn.Module):
@@ -68,6 +69,7 @@ class _MPCCell(nn.Module):
         x_mu = self.policy_mean_1(x)
         x_mu = nn.tanh(x_mu)
         x_mu = self.policy_mean_2(x_mu)
+        x_mu = range_scale * nn.tanh(x_mu)
         x_std = self.policy_std_1(x)
         x_std = nn.sigmoid(x_std)
         x_std = self.policy_std_2(x_std)
@@ -226,6 +228,7 @@ class ActorCriticNetwork(nn.Module):
 
         # Output Layer:
         mean = self.mean_layer(i)
+        mean = range_scale * nn.tanh(mean)
         std = self.std_layer(j)
         std = nn.sigmoid(std)
         values = self.value_layer(k)

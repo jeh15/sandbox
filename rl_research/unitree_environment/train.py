@@ -93,8 +93,8 @@ def main(argv=None):
 
     # Create Environment:
     episode_length = 200
-    episode_train_length = 25
-    num_envs = 32
+    episode_train_length = 20
+    num_envs = 2
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -119,10 +119,11 @@ def main(argv=None):
         filename,
     )
     pipeline_model = brax.io.mjcf.load(filepath)
+    pipeline_model = pipeline_model.replace(dt=0.002)
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
-        nodes=3,
+        nodes=1,
         sys=pipeline_model,
     )
 
@@ -133,7 +134,7 @@ def main(argv=None):
     )
 
     # Hyperparameters:
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     end_learning_rate = 1e-6
     transition_steps = 100
     transition_begin = 100
