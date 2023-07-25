@@ -13,7 +13,7 @@ import orbax.checkpoint
 
 import ur5e
 import model
-import model_utilities
+import model_utilities_v2 as model_utilities
 import custom_wrapper
 import visualize
 
@@ -79,7 +79,7 @@ def main(argv=None):
     key_seed = 42
 
     # Create Environment:
-    episode_length = 200
+    episode_length = 1000
     num_envs = 1
     env = create_environment(
         episode_length=episode_length,
@@ -105,6 +105,7 @@ def main(argv=None):
         filename,
     )
     pipeline_model = brax.io.mjcf.load(filepath)
+    pipeline_model = pipeline_model.replace(dt=0.002)
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
@@ -142,7 +143,7 @@ def main(argv=None):
 
     target = {'model': model_state}
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    checkpoint_path = os.path.join(os.path.dirname(__file__), 'checkpoints')
+    checkpoint_path = os.path.join(os.path.dirname(__file__), 'checkpoints/25/default')
     model_state = orbax_checkpointer.restore(checkpoint_path, item=target)['model']
 
     state_history = []

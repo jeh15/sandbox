@@ -17,6 +17,7 @@ def forward_pass(
     x: jax.typing.ArrayLike,
     key: jax.random.PRNGKeyArray,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    print("Forward Pass Compiling")
     mean, std, values = apply_fn({"params": model_params}, x, key)
     return mean, std, values
 

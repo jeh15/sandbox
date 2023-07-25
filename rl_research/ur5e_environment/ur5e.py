@@ -25,7 +25,14 @@ class ur5e(PipelineEnv):
 
         sys = mjcf.load(filepath)
 
-        n_frames = 1
+        if backend in ['spring', 'positional']:
+            n_frames = 1
+            sys = sys.replace(dt=0.002)
+
+        elif backend in ['generalized']:
+            n_frames = 1
+            sys = sys.replace(dt=0.002)
+
         kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
 
         # Class Wide Paraameters:

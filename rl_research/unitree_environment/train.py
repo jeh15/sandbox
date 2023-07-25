@@ -190,10 +190,10 @@ def main(argv=None):
                 model_key = jax.random.split(env_key, num_envs)
                 model_input = states.obs
                 mean, std, values = model_utilities.forward_pass(
-                    model_params=model_state.params,
-                    apply_fn=model_state.apply_fn,
-                    x=model_input,
-                    key=model_key,
+                    model_state.params,
+                    model_state.apply_fn,
+                    model_input,
+                    model_key,
                 )
                 actions, log_probability, entropy = model_utilities.select_action(
                     mean=mean,
@@ -215,12 +215,6 @@ def main(argv=None):
                 keys_episode.append(model_key)
                 states = next_states
                 state_history.append(states)
-
-                mean.block_until_ready()
-
-                jax.profiler.save_device_memory_profile("memory.prof")
-
-                exit()
 
             # Convert to Jax Arrays:
             states_episode = jnp.swapaxes(
@@ -253,10 +247,10 @@ def main(argv=None):
             model_key = jax.random.split(env_key, num_envs)
             _, _, values = jax.lax.stop_gradient(
                 model_utilities.forward_pass(
-                    model_params=model_state.params,
-                    apply_fn=model_state.apply_fn,
-                    x=model_input,
-                    key=model_key,
+                    model_state.params,
+                    model_state.apply_fn,
+                    model_input,
+                    model_key,
                 ),
             )
 

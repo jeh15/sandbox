@@ -88,8 +88,8 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 100
-    num_envs = 48
+    episode_length = 200
+    num_envs = 32
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -114,6 +114,7 @@ def main(argv=None):
         filename,
     )
     pipeline_model = brax.io.mjcf.load(filepath)
+    pipeline_model = pipeline_model.replace(dt=0.002)
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
@@ -132,7 +133,7 @@ def main(argv=None):
     end_learning_rate = 1e-6
     transition_steps = 100
     transition_begin = 200
-    ppo_steps = 10
+    ppo_steps = 5
 
     # Create a train state:
     schedule = optax.linear_schedule(
@@ -292,6 +293,16 @@ def main(argv=None):
             best_reward = average_reward
             best_iteration = iteration
 
+        if checkpoint_enabled:
+            if iteration % 25 == 0:
+                directory = os.path.dirname(__file__)
+                checkpoint_path = os.path.join(directory, "checkpoints")
+                save_checkpoint.save_checkpoint(
+                    state=model_state,
+                    path=checkpoint_path,
+                    iteration=iteration,
+                )
+
         if visualize_flag:
             if iteration % 25 == 0:
                 video_filepath = os.path.join(
@@ -324,7 +335,11 @@ def main(argv=None):
     directory = os.path.dirname(__file__)
     if checkpoint_enabled:
         checkpoint_path = os.path.join(directory, "checkpoints")
-        save_checkpoint.save_checkpoint(state=model_state, path=checkpoint_path)
+        save_checkpoint.save_checkpoint(
+            state=model_state,
+            path=checkpoint_path,
+            iteration=iteration,
+        )
 
     # Pickle Metrics:
     if pickle_enabled:

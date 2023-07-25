@@ -19,6 +19,7 @@ class _MPCCell(nn.Module):
     """
         Module for scan function for the MPC cell.
     """
+    action_space: int
     features: int
     sys: System
 
@@ -39,7 +40,7 @@ class _MPCCell(nn.Module):
             dtype=dtype,
         )
         self.policy_mean_2 = nn.Dense(
-            features=1,
+            features=self.action_space,
             name='policy_mean_2',
             dtype=dtype,
         )
@@ -49,7 +50,7 @@ class _MPCCell(nn.Module):
             dtype=dtype,
         )
         self.policy_std_2 = nn.Dense(
-            features=1,
+            features=self.action_space,
             name='policy_std_2',
             dtype=dtype,
         )
@@ -91,6 +92,7 @@ class _MPCCell(nn.Module):
 
 
 class MPCCell(nn.Module):
+    action_space: int
     features: int
     nodes: int
     sys: System
@@ -108,7 +110,7 @@ class MPCCell(nn.Module):
             out_axes=0,
             length=self.nodes,
         )
-        self.scan = scan_fn(self.features, self.sys)
+        self.scan = scan_fn(self.action_space, self.features, self.sys)
 
     def __call__(self, x, key) -> jnp.ndarray:
         # Initialize Pipeline State:
@@ -126,6 +128,7 @@ class MPCCell(nn.Module):
         state_trajectory = jnp.concatenate(
             [initial_condition, predicted_state_trajectory],
         )
+        # state_trajectory = predicted_state_trajectory
         return state_trajectory
 
 
@@ -193,6 +196,7 @@ class ActorCriticNetwork(nn.Module):
             dtype=dtype,
         )
         self.MPCCell = MPCCell(
+            action_space=self.action_space,
             features=MPC_features,
             nodes=self.nodes,
             sys=self.sys,
