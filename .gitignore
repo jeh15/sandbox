@@ -314,3 +314,4 @@ user.bazelrc
 # Flax/Orbax Checkpoints
 /checkpoints/
 **/checkpoints/
+checkpoint
