@@ -310,3 +310,7 @@ user.bazelrc
 
 # Pickle files
 *.pkl
+
+# Flax/Orbax Checkpoints
+/checkpoints/
+**/checkpoints/
