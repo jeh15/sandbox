@@ -61,11 +61,12 @@ def main(argv=None):
         episode_length=None,
         auto_reset=False,
         batch_size=False,
-        backend='generalized',
+        backend='positional',
     )
 
     # Load mjcf model:
     pipeline_model = mjcf.load(filepath)
+    pipeline_model = pipeline_model.replace(dt=0.002)
     motor_mask = pipeline_model.actuator.qd_id
 
     initial_q = jnp.array(
@@ -79,10 +80,10 @@ def main(argv=None):
     state = reset_fn(initial_key)
 
     state_history = [state.pipeline_state]
-    simulation_steps = 200
+    simulation_steps = 500
     ctrl_input = initial_q
     for i in tqdm(range(simulation_steps)):
-        ctrl_input += 0.01 * jnp.ones_like(initial_q)
+        # ctrl_input += 0.01 * jnp.ones_like(initial_q)
         state = step_fn(state, ctrl_input)
         state_history.append(state.pipeline_state)
 

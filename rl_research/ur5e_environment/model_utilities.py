@@ -26,7 +26,7 @@ def select_action(
     mean: jax.Array,
     std: jax.Array,
     key: jax.random.PRNGKeyArray,
-    multivariate: bool = False,
+    multivariate: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     if multivariate:
         probability_distribution = distrax.MultivariateNormalDiag(
@@ -52,7 +52,7 @@ def evaluate_action(
     mean: jax.Array,
     std: jax.Array,
     action: jax.Array,
-    multivariate: bool = False,
+    multivariate: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     if multivariate:
         probability_distribution = distrax.MultivariateNormalDiag(
@@ -116,27 +116,6 @@ def loss_function(
         actions,
         keys,
     )
-
-    # Serialized Replay:
-    # model_input = jnp.swapaxes(
-    #     jnp.asarray(model_input), axis1=1, axis2=0,
-    # )
-    # actions = jnp.swapaxes(
-    #     jnp.asarray(actions), axis1=1, axis2=0,
-    # )
-    # keys = jnp.swapaxes(
-    #     jnp.asarray(keys), axis1=1, axis2=0,
-    # )
-    # length = model_input.shape[0]
-
-    # values, log_probability, entropy = replay_serial(
-    #     model_params,
-    #     apply_fn,
-    #     model_input,
-    #     actions,
-    #     keys,
-    #     length,
-    # )
 
     # Calculate Ratio: (Should this be No Grad?)
     log_ratios = log_probability - previous_log_probability
@@ -222,55 +201,6 @@ def replay_serial(
         length,
     )
     values, log_probability, entropy = data
-    values = jnp.swapaxes(
-        jnp.asarray(values), axis1=1, axis2=0,
-    )
-    log_probability = jnp.swapaxes(
-        jnp.asarray(log_probability), axis1=1, axis2=0,
-    )
-    entropy = jnp.swapaxes(
-        jnp.asarray(entropy), axis1=1, axis2=0,
-    )
-    return values, log_probability, entropy
-
-
-def replay_loop(
-    model_params: flax.core.FrozenDict,
-    apply_fn: Callable[..., Any],
-    model_input: jax.Array,
-    actions: jax.Array,
-    keys: jax.random.PRNGKeyArray,
-    episode_length: int,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    values = []
-    log_probabilities = []
-    entropies = []
-    for i in range(episode_length):
-        x = model_input[i]
-        key = keys[i]
-        action = actions[i]
-
-        mean, std, value = forward_pass(
-            model_params,
-            apply_fn,
-            x,
-            key,
-        )
-
-        log_probability, entropy = evaluate_action(
-            mean,
-            std,
-            action,
-        )
-
-        values.append(value)
-        log_probabilities.append(log_probability)
-        entropies.append(entropy)
-
-    values = jnp.asarray(values)
-    log_probability = jnp.asarray(log_probabilities)
-    entropy = jnp.asarray(entropies)
-
     values = jnp.swapaxes(
         jnp.asarray(values), axis1=1, axis2=0,
     )

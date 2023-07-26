@@ -17,7 +17,6 @@ import model
 import model_utilities
 import ur5e
 import custom_wrapper
-import visualize
 import save_checkpoint
 
 # jax.config.update("jax_enable_x64", True)
@@ -96,7 +95,7 @@ def main(argv=None):
         action_repeat=1,
         auto_reset=True,
         batch_size=num_envs,
-        backend='generalized'
+        backend='positional'
     )
     step_fn = jax.jit(env.step)
     reset_fn = jax.jit(env.reset)
@@ -133,15 +132,16 @@ def main(argv=None):
     learning_rate = 1e-3
     end_learning_rate = 1e-6
     transition_steps = 100
-    transition_begin = 200
+    transition_begin = 100
+    num_mini_batch_steps = episode_length // episode_mini_batch_length
     ppo_steps = 10
 
     # Create a train state:
     schedule = optax.linear_schedule(
         init_value=learning_rate,
         end_value=end_learning_rate,
-        transition_steps=ppo_steps * transition_steps,
-        transition_begin=ppo_steps * transition_begin,
+        transition_steps=ppo_steps * num_mini_batch_steps * transition_steps,
+        transition_begin=ppo_steps * num_mini_batch_steps * transition_begin,
     )
     tx = optimizer(learning_rate=schedule)
     model_state = create_train_state(
@@ -152,7 +152,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
-    training_length = 50
+    training_length = 300
     key, env_key = jax.random.split(initial_key)
     visualize_flag = False
     checkpoint_enabled = True

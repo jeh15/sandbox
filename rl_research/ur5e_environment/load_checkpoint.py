@@ -1,5 +1,5 @@
 import os
-from absl import app
+from absl import app, flags
 from typing import Optional
 
 import jax
@@ -9,13 +9,22 @@ from flax.training import train_state
 import brax
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
+from brax.positional import pipeline
 import orbax.checkpoint
 
 import ur5e
 import model
-import model_utilities_v2 as model_utilities
+import model_utilities
 import custom_wrapper
 import visualize
+
+
+# Put Jax onto CPU while another instance of jax is running:
+jax.config.update('jax_platform_name', 'cpu')
+
+FLAGS = flags.FLAGS
+flags.DEFINE_string('filename', None, 'Checkpoint file name.', short_name='f')
+flags.mark_flag_as_required('filename')
 
 
 def create_environment(
@@ -77,6 +86,11 @@ def create_train_state(module, params, optimizer):
 def main(argv=None):
     # RNG Key:
     key_seed = 42
+    use_pipeline = False
+    if use_pipeline:
+        source = 'pipeline'
+    else:
+        source = 'environment'
 
     # Create Environment:
     episode_length = 1000
@@ -86,13 +100,13 @@ def main(argv=None):
         action_repeat=1,
         auto_reset=False,
         batch_size=num_envs,
-        backend='generalized'
+        backend='generalized',
     )
-    step_fn = jax.jit(env.step)
-    reset_fn = jax.jit(env.reset)
 
-    # Initize Networks:
+    # Initize Networks and States:
     initial_key = jax.random.PRNGKey(key_seed)
+    key, env_key = jax.random.split(initial_key)
+    states = jax.jit(env.reset)(env_key)
 
     # Filepath:
     filename = "models/universal_robots/scene_brax.xml"
@@ -106,10 +120,20 @@ def main(argv=None):
     )
     pipeline_model = brax.io.mjcf.load(filepath)
     pipeline_model = pipeline_model.replace(dt=0.002)
+    if use_pipeline:
+        step_fn = lambda state, action: jax.jit(pipeline.step)(pipeline_model, state, jnp.squeeze(action))
+        states = jax.jit(pipeline.init)(
+            pipeline_model,
+            env.initial_q,
+            jnp.zeros(pipeline_model.qd_size(),),
+        )
+    else:
+        step_fn = jax.jit(env.step)
+
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
-        nodes=5,
+        nodes=10,
         sys=pipeline_model,
     )
 
@@ -123,7 +147,7 @@ def main(argv=None):
     learning_rate = 1e-3
     end_learning_rate = 1e-6
     transition_steps = 100
-    transition_begin = 400
+    transition_begin = 100
     ppo_steps = 10
 
     # Create a train state:
@@ -143,17 +167,26 @@ def main(argv=None):
 
     target = {'model': model_state}
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    checkpoint_path = os.path.join(os.path.dirname(__file__), 'checkpoints/25/default')
+    checkpoint_path = os.path.join(os.path.dirname(__file__), FLAGS.filename)
     model_state = orbax_checkpointer.restore(checkpoint_path, item=target)['model']
 
     state_history = []
     key, env_key = jax.random.split(initial_key)
-    states = reset_fn(env_key)
     state_history.append(states)
     for environment_step in range(episode_length):
             key, env_key = jax.random.split(env_key)
             model_key = jax.random.split(env_key, num_envs)
-            model_input = states.obs
+            if use_pipeline:
+                model_input = jnp.expand_dims(
+                    jnp.concatenate([
+                        states.q,
+                        states.qd,
+                    ], axis=-1),
+                    axis=0,
+                )
+            else:
+                model_input = states.obs
+
             mean, std, values = model_utilities.forward_pass(
                 model_params=model_state.params,
                 apply_fn=model_state.apply_fn,
@@ -174,25 +207,28 @@ def main(argv=None):
 
     # Squeeze states for visualization:
     formatted_state_history = []
-    for state in state_history:
-        state_x = state.pipeline_state.x.replace(
-            pos=jnp.squeeze(state.pipeline_state.x.pos),
-            rot=jnp.squeeze(state.pipeline_state.x.rot),
-        )
-        state_xd = state.pipeline_state.xd.replace(
-            ang=jnp.squeeze(state.pipeline_state.xd.ang),
-            vel=jnp.squeeze(state.pipeline_state.xd.vel),
-        )
-        state_pipeline_state = state.pipeline_state.replace(
-            q=jnp.squeeze(state.pipeline_state.q),
-            qd=jnp.squeeze(state.pipeline_state.qd),
-            x=state_x,
-            xd=state_xd,
-        )
-        state = state.replace(
-            pipeline_state=state_pipeline_state,
-        )
-        formatted_state_history.append(state)
+    if not use_pipeline:
+        for state in state_history:
+            state_x = state.pipeline_state.x.replace(
+                pos=jnp.squeeze(state.pipeline_state.x.pos),
+                rot=jnp.squeeze(state.pipeline_state.x.rot),
+            )
+            state_xd = state.pipeline_state.xd.replace(
+                ang=jnp.squeeze(state.pipeline_state.xd.ang),
+                vel=jnp.squeeze(state.pipeline_state.xd.vel),
+            )
+            state_pipeline_state = state.pipeline_state.replace(
+                q=jnp.squeeze(state.pipeline_state.q),
+                qd=jnp.squeeze(state.pipeline_state.qd),
+                x=state_x,
+                xd=state_xd,
+            )
+            state = state.replace(
+                pipeline_state=state_pipeline_state,
+            )
+            formatted_state_history.append(state)
+    else:
+        formatted_state_history = state_history
 
     video_filepath = os.path.join(
         os.path.dirname(__file__),
@@ -205,7 +241,7 @@ def main(argv=None):
         height=720,
         name="ur5e",
         filepath=video_filepath,
-        source="environment",
+        source=source,
     )
 
 

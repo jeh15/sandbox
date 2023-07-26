@@ -74,14 +74,14 @@ class _MPCCell(nn.Module):
         x_std = nn.sigmoid(x_std)
         x_std = self.policy_std_2(x_std)
         x_std = nn.sigmoid(x_std)
-        # probability_distribution = distrax.MultivariateNormalDiag(
-        #     loc=x_mu,
-        #     scale_diag=x_std,
-        # )
-        probability_distribution = distrax.Normal(
+        probability_distribution = distrax.MultivariateNormalDiag(
             loc=x_mu,
-            scale=x_std,
+            scale_diag=x_std,
         )
+        # probability_distribution = distrax.Normal(
+        #     loc=x_mu,
+        #     scale=x_std,
+        # )
         x = probability_distribution.sample(seed=key)
         state = self.step_pipeline(state, x)
         x = jnp.concatenate([state.q, state.qd])

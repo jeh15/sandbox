@@ -39,6 +39,7 @@ class ur5e(PipelineEnv):
         self.initial_q = jnp.array(
             [-jnp.pi / 2, -jnp.pi / 2, jnp.pi / 2, -jnp.pi / 2, -jnp.pi / 2, 0.0],
         )
+
         # State indices to joints that can be actuated:
         self.motor_id = sys.actuator.qd_id
 
@@ -52,18 +53,13 @@ class ur5e(PipelineEnv):
     def reset(self, rng: jax.typing.ArrayLike) -> State:
         """Resets the environment to an initial state."""
         rng, rng1, rng2 = jax.random.split(rng, 3)
-        eps = 0.01
-        q = self.sys.init_q + jax.random.uniform(
-            rng1,
-            (self.sys.q_size(),),
-            minval=self.initial_q - eps,
-            maxval=self.initial_q + eps,
-        )
+        eps = 0.001
+        q = self.initial_q
         qd = jax.random.uniform(
             rng2,
             (self.sys.qd_size(),),
-            minval=jnp.zeros_like(self.initial_q) - eps,
-            maxval=jnp.zeros_like(self.initial_q) + eps,
+            minval=jnp.zeros(self.sys.qd_size(),) - eps,
+            maxval=jnp.zeros(self.sys.qd_size(),) + eps,
         )
         pipeline_state = self.pipeline_init(q, qd)
         joint_frame = self.get_q(pipeline_state)
