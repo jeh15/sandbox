@@ -118,7 +118,7 @@ def main(argv=None):
         filename,
     )
     pipeline_model = brax.io.mjcf.load(filepath)
-    pipeline_model = pipeline_model.replace(dt=0.002)
+    pipeline_model = pipeline_model.replace(dt=0.02)
     if use_pipeline:
         step_fn = lambda state, action: jax.jit(pipeline.step)(pipeline_model, state, jnp.squeeze(action))
         states = jax.jit(pipeline.init)(

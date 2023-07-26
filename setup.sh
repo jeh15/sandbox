@@ -42,7 +42,7 @@ then
 fi
 
 echo -e "$($gum style --italic --foreground 99 'Installing dependencies...')\n"
-$gum spin -s line --title "Installing Brax..." -- sh -c 'env/bin/pip install brax'
+$gum spin -s line --title "Installing Brax..." -- sh -c 'env/bin/pip install git+https://github.com/jeh15/brax.git'
 echo -e "$($gum style --italic --foreground 99 '    > Installed Brax')\n"
 $gum spin -s line --title "Installing Distrax..." -- sh -c 'env/bin/pip install git+https://github.com/deepmind/distrax.git'
 echo -e "$($gum style --italic --foreground 99 '    > Installed Distrax')\n"

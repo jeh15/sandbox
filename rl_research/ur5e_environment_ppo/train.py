@@ -86,8 +86,8 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 1000
-    episode_mini_batch_length = 200
+    episode_length = 500
+    episode_mini_batch_length = 250
     num_envs = 256
     env = create_environment(
         episode_length=episode_length,
@@ -149,7 +149,7 @@ def main(argv=None):
     del initial_params
 
     # Learning Loop:
-    training_length = 300
+    training_length = 1000
     key, env_key = jax.random.split(initial_key)
     checkpoint_enabled = True
     pickle_enabled = False
