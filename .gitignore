@@ -315,3 +315,7 @@ user.bazelrc
 /checkpoints/
 **/checkpoints/
 checkpoint
+
+# MacOS:
+.DS_Store
+/.DS_Store
