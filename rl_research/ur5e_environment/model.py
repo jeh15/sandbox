@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from flax import linen as nn
 from brax import base
 from brax.base import System
-from brax.positional import pipeline
+from brax.generalized import pipeline
 import distrax
 
 # Typing:

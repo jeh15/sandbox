@@ -4,15 +4,11 @@ from absl import app
 
 import jax
 import jax.numpy as jnp
-import brax
-from brax.io import mjcf
-from brax.positional import pipeline
+import brax.generalized.constraint
 from brax.envs.wrappers import training as wrapper
 from brax.envs.base import Env
-from tqdm import tqdm
 
 import unitree_a1
-import visualize
 import custom_wrapper
 
 
@@ -46,7 +42,7 @@ def create_environment(
 
 
 def main(argv=None):
-    # Import mjcf file:
+    # Initialize System:
     filename = "models/unitree/scene.xml"
     filepath = os.path.join(
         os.path.dirname(
@@ -61,21 +57,7 @@ def main(argv=None):
         episode_length=None,
         auto_reset=False,
         batch_size=False,
-        backend='positional',
-    )
-
-    # Load mjcf model:
-    pipeline_model = mjcf.load(filepath)
-    motor_mask = pipeline_model.actuator.qd_id
-
-    initial_q = jnp.array(
-        [0, 0, 0.27, 1, 0, 0, 0, 0, 0.9, -1.8,
-         0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
-        dtype=jnp.float32,
-    )
-    base_ctrl = jnp.array(
-        [0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
-        dtype=jnp.float32,
+        backend='generalized',
     )
 
     reset_fn = jax.jit(env.reset)
@@ -84,27 +66,9 @@ def main(argv=None):
     initial_key = jax.random.PRNGKey(42)
     state = reset_fn(initial_key)
 
-    state_history = [state.pipeline_state]
-    simulation_steps = 200
-    for i in tqdm(range(simulation_steps)):
-        ctrl_input = jnp.zeros((base_ctrl.shape[0],), dtype=jnp.float32)
-        front_left = jnp.array([0, jnp.sin(i / 50), 0])
-        front_right = -jnp.array([0, jnp.sin(i / 50), 0])
-        back_left = -jnp.array([0, jnp.sin(i / 50), 0])
-        back_right = jnp.array([0, jnp.sin(i / 50), 0])
-        sine_force = 5 * jnp.concatenate([front_right, front_left, back_right, back_left])
-        state = step_fn(state, ctrl_input)
-        state_history.append(state.pipeline_state)
-
-    video_filepath = os.path.join(os.path.dirname(__file__), "unitree_simulation")
-    visualize.create_video(
-        sys=pipeline_model,
-        states=state_history,
-        width=1280,
-        height=720,
-        name="Unitree a1",
-        filepath=video_filepath,
-    )
+    b = state.pipeline_state.con_jac @ state.pipeline_state.mass_mx_inv @ state.pipeline_state.qf_smooth - state.pipeline_state.con_aref
+    dummy_input = jnp.zeros_like(b)
+    jax.jacobian(brax.generalized.constraint.force, argnums=0)(dummy_input, env.sys, state.pipeline_state)
 
 
 if __name__ == "__main__":

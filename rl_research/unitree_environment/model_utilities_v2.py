@@ -93,7 +93,7 @@ def calculate_advantage(
     return advantage, returns
 
 
-# @functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
+@functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
 def loss_function(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
@@ -110,25 +110,25 @@ def loss_function(
     entropy_coeff = 0.01
     clip_coeff = 0.2
 
-    # # Vmapped Replay:
-    # values, log_probability, entropy = replay(
-    #     model_params,
-    #     apply_fn,
-    #     model_input,
-    #     actions,
-    #     keys,
-    # )
+    # Vmapped Replay:
+    values, log_probability, entropy = replay(
+        model_params,
+        apply_fn,
+        model_input,
+        actions,
+        keys,
+    )
 
     # Serialized Replay:
-    model_input = jnp.swapaxes(
-        jnp.asarray(model_input), axis1=1, axis2=0,
-    )
-    actions = jnp.swapaxes(
-        jnp.asarray(actions), axis1=1, axis2=0,
-    )
-    keys = jnp.swapaxes(
-        jnp.asarray(keys), axis1=1, axis2=0,
-    )
+    # model_input = jnp.swapaxes(
+    #     jnp.asarray(model_input), axis1=1, axis2=0,
+    # )
+    # actions = jnp.swapaxes(
+    #     jnp.asarray(actions), axis1=1, axis2=0,
+    # )
+    # keys = jnp.swapaxes(
+    #     jnp.asarray(keys), axis1=1, axis2=0,
+    # )
 
     # values, log_probability, entropy = replay_serial(
     #     model_params,
@@ -139,14 +139,14 @@ def loss_function(
     #     episode_length,
     # )
 
-    values, log_probability, entropy = replay_loop(
-        model_params,
-        apply_fn,
-        model_input,
-        actions,
-        keys,
-        episode_length,
-    )
+    # values, log_probability, entropy = replay_loop(
+    #     model_params,
+    #     apply_fn,
+    #     model_input,
+    #     actions,
+    #     keys,
+    #     episode_length,
+    # )
 
     # Calculate Ratio: (Should this be No Grad?)
     log_ratios = log_probability - previous_log_probability
@@ -195,7 +195,7 @@ def replay(
 
 
 # Serialized Replay Function:
-# @functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
+@functools.partial(jax.jit, static_argnames=["apply_fn", "episode_length"])
 def replay_serial(
     model_params: flax.core.FrozenDict,
     apply_fn: Callable[..., Any],
@@ -293,9 +293,9 @@ def replay_loop(
     return values, log_probability, entropy
 
 
-# @functools.partial(
-#     jax.jit, static_argnames=["batch_size", "episode_length", "ppo_steps"]
-# )
+@functools.partial(
+    jax.jit, static_argnames=["batch_size", "episode_length", "ppo_steps"]
+)
 def train_step(
     model_state: flax.training.train_state.TrainState,
     model_input: jax.typing.ArrayLike,

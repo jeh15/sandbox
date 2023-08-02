@@ -96,7 +96,7 @@ def main(argv=None):
     # Create Environment:
     episode_length = 200
     episode_train_length = 20
-    num_envs = 2
+    num_envs = 32
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,

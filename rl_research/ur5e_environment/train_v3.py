@@ -89,7 +89,7 @@ def main(argv=None):
     # Create Environment:
     episode_length = 1000
     episode_mini_batch_length = 100
-    num_envs = 48
+    num_envs = 32
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,

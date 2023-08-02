@@ -5,7 +5,7 @@ from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 import jax
 import jax.numpy as jnp
-
+import flax
 # jax.config.update("jax_enable_x64", True)
 dtype = jnp.float32
 
@@ -27,8 +27,8 @@ class unitree_a1(PipelineEnv):
 
         # Spring > Positional but these do not work:
         if backend in ['spring', 'positional']:
-            sys = sys.replace(dt=0.0002)
-            n_frames = 10
+            sys = sys.replace(dt=0.002)
+            n_frames = 1
             sys = sys.replace(
                 actuator=sys.actuator.replace(
                     gear=8.0 * jnp.ones_like(sys.actuator.gear),
@@ -102,7 +102,11 @@ class unitree_a1(PipelineEnv):
         done = jnp.array(0, dtype=dtype)
         return State(pipeline_state, obs, reward, done, {})
 
-    def step(self, state: State, action: jax.typing.ArrayLike) -> State:
+    def step(
+        self,
+        state: State,
+        action: jax.typing.ArrayLike,
+    ) -> State:
         """Run one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
         obs = self._get_states(pipeline_state)
