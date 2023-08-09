@@ -11,8 +11,8 @@ import distrax
 # Typing:
 PRNGKey = jax.random.PRNGKeyArray
 
-# jax.config.update("jax_enable_x64", True)
-dtype = jnp.float32
+jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 class _MPCCell(nn.Module):

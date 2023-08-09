@@ -6,8 +6,8 @@ import jax.numpy as jnp
 import flax
 import distrax
 
-# jax.config.update("jax_enable_x64", True)
-dtype = jnp.float32
+jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 @functools.partial(jax.jit, static_argnames=["apply_fn"])

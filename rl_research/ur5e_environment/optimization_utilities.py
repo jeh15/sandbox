@@ -15,7 +15,7 @@ Batch = Tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
 )
 def train_step(
     model_state: flax.training.train_state.TrainState,
-    Batch: Batch,
+    batch: Batch,
     ppo_steps: int,
 ) -> Tuple[flax.training.train_state.TrainState, jnp.ndarray]:
     # PPO Optimixation Loop:
@@ -42,7 +42,7 @@ def train_step(
     gradient_function = jax.value_and_grad(model_utilities.loss_function)
 
     # Unpack Batch:
-    model_input, actions, advantages, returns, previous_log_probability, keys = Batch
+    model_input, actions, advantages, returns, previous_log_probability, keys = batch
 
     # Loop over PPO steps:
     carry, data = jax.lax.scan(
@@ -69,12 +69,12 @@ def create_mini_batch(array: jax.Array, mini_batch_size: int) -> jnp.ndarray:
 
 def fit(
     model_state: flax.training.train_state.TrainState,
-    Batch: Batch,
+    batch: Batch,
     mini_batch_size: int,
     ppo_steps: int,
 ) -> Tuple[flax.training.train_state.TrainState, jnp.ndarray]:
     # Unpack Batch:
-    model_input, actions, advantages, returns, previous_log_probability, keys = Batch
+    model_input, actions, advantages, returns, previous_log_probability, keys = batch
 
     # Split Batch and create mini batches along the episode dimension:
     model_input = create_mini_batch(

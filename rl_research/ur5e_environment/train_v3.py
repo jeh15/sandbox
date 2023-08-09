@@ -2,6 +2,7 @@ import os
 import pickle
 from absl import app
 from typing import Optional
+import time
 
 import numpy as np
 import jax
@@ -19,8 +20,8 @@ import ur5e
 import custom_wrapper
 import save_checkpoint
 
-# jax.config.update("jax_enable_x64", True)
-dtype = jnp.float32
+jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 def create_environment(
@@ -87,9 +88,9 @@ def main(argv=None):
     best_iteration = 0
 
     # Create Environment:
-    episode_length = 1000
-    episode_mini_batch_length = 100
-    num_envs = 32
+    episode_length = 500
+    episode_mini_batch_length = 25
+    num_envs = 128
     env = create_environment(
         episode_length=episode_length,
         action_repeat=1,
@@ -114,11 +115,11 @@ def main(argv=None):
         filename,
     )
     pipeline_model = brax.io.mjcf.load(filepath)
-    pipeline_model = pipeline_model.replace(dt=0.002)
+    pipeline_model = pipeline_model.replace(dt=0.02)
 
     network = model.ActorCriticNetworkVmap(
         action_space=env.action_size,
-        nodes=10,
+        nodes=5,
         sys=pipeline_model,
     )
 
@@ -173,6 +174,7 @@ def main(argv=None):
         rewards_episode = []
         masks_episode = []
         keys_episode = []
+        episode_start = time.time()
         for environment_step in range(episode_length):
             key, env_key = jax.random.split(env_key)
             model_key = jax.random.split(env_key, num_envs)
@@ -203,6 +205,8 @@ def main(argv=None):
             keys_episode.append(model_key)
             states = next_states
             state_history.append(states)
+
+        episode_end = time.time() - episode_start
 
         # Convert to Jax Arrays:
         states_episode = jnp.swapaxes(
@@ -262,12 +266,14 @@ def main(argv=None):
                     returns_episode, log_probability_episode, keys_episode)
         # Update Function:
         loss_history = []
+        train_start = time.time()
         model_state, loss = optimization_utilities.fit(
             model_state=model_state,
-            Batch=batch,
+            batch=batch,
             mini_batch_size=num_mini_batch,
             ppo_steps=ppo_steps,
         )
+        train_end = time.time() - train_start
 
         average_reward = np.mean(
             np.sum(
@@ -295,6 +301,10 @@ def main(argv=None):
             f'Loss: {loss} \t' +
             f'Average Value: {average_value} \t' +
             f'Learning Rate: {current_learning_rate}',
+        )
+        print(
+            f'Episode time: {episode_end} \t' +
+            f'Train time: {train_end}'
         )
 
         if checkpoint_enabled:

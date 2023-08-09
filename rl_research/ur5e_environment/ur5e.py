@@ -6,8 +6,8 @@ from brax.io import mjcf
 import jax
 import jax.numpy as jnp
 
-# jax.config.update("jax_enable_x64", True)
-dtype = jnp.float32
+jax.config.update("jax_enable_x64", True)
+dtype = jnp.float64
 
 
 class ur5e(PipelineEnv):
@@ -31,7 +31,7 @@ class ur5e(PipelineEnv):
 
         elif backend in ['generalized']:
             n_frames = 1
-            sys = sys.replace(dt=0.002)
+            sys = sys.replace(dt=0.02)
 
         kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
 
