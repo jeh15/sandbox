@@ -224,13 +224,16 @@ def qp_layer(
 
     # Create QP:
     qp = BoxOSQP(
-        primal_infeasible_tol=1e-3,
-        dual_infeasible_tol=1e-3,
-        rho_start=1e-2,
-        maxiter=8000,
+        check_primal_dual_infeasability=False,
+        primal_infeasible_tol=1e-5,
+        dual_infeasible_tol=1e-5,
+        rho_start=1e-6,
+        maxiter=250,
+        termination_check_frequency=5,
         tol=1e-3,
         verbose=0,
         jit=True,
+        unroll=True,
     )
 
     # Solve QP:
@@ -349,7 +352,7 @@ def main(argv=None) -> None:
     # Optimization Parameters: (These really matter for solve convergence)
     time_horizon = 5.0
     nodes = 21
-    num_optimizations = 25
+    num_optimizations = 1
 
     # Dummy Inputs:
     initial_condition = []
@@ -401,25 +404,44 @@ def main(argv=None) -> None:
     )
 
     # Solve QP:
-    start_time = time.time()
-    pos, vel, acc, state = vqp_layer(
-        initial_condition,
-        target_position,
-    )
-    elapsed_time = time.time() - start_time
-    print(f'Elapsed Time: {elapsed_time:.3f} seconds')
+    run_length = 1000
+    for _ in range(run_length):
+        start_time = time.time()
+        initial_condition = jax.random.uniform(
+            key=subkey,
+            shape=(num_optimizations, 2),
+            minval=jnp.array([-2.0, 0]),
+            maxval=jnp.array([-1.0, 0]),
+            dtype=jnp.float32,
+        )
+        target_position = jax.random.uniform(
+            key=subkey,
+            shape=(num_optimizations,),
+            minval=jnp.array([1.0]),
+            maxval=jnp.array([2.0]),
+            dtype=jnp.float32,
+        )
+        initial_condition = np.array(initial_condition)
+        target_position = np.array(target_position)
+        pos, vel, acc, state = vqp_layer(
+            initial_condition,
+            target_position,
+        )
+        jax.block_until_ready(pos)
+        elapsed_time = time.time() - start_time
+        print(f'Elapsed Time: {elapsed_time:.3f} seconds')
 
-    # Print Status:
-    print(f'Optimization Solved: {(state.status).any()}')
+        # Print Status:
+        print(f'Optimization Solved: {(state.status).any()}')
 
-    visualize_batches = 25
-    generate_batch_video(
-        states=pos,
-        target=target_position,
-        batch_size=visualize_batches,
-        dt=time_horizon/(nodes - 1),
-        name=f'./videos/puck_simulation'
-    )
+    # visualize_batches = 25
+    # generate_batch_video(
+    #     states=pos,
+    #     target=target_position,
+    #     batch_size=visualize_batches,
+    #     dt=time_horizon/(nodes - 1),
+    #     name=f'./videos/puck_simulation'
+    # )
 
 
 if __name__ == '__main__':

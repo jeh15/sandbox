@@ -33,7 +33,7 @@ def main(argv=None):
         ),
         xml_path,
     )
-    
+
     visualizer = ModelVisualizer(meshcat=meshcat)
     visualizer.parser().AddModels(filepath)
     visualizer.Run()
@@ -41,4 +41,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     app.run(main)
-
